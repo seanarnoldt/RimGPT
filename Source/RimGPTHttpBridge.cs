@@ -231,7 +231,11 @@ namespace RimGPT
         {
             command = null;
             error = null;
-            string commandId = Guid.NewGuid().ToString("N");
+            string commandId;
+            if (!TryReadOptionalCommandId(body, out commandId))
+            {
+                commandId = Guid.NewGuid().ToString("N");
+            }
 
             if (string.Equals(commandName, "pause", StringComparison.OrdinalIgnoreCase))
             {
@@ -374,6 +378,25 @@ namespace RimGPT
 
             value = Regex.Unescape(match.Groups["value"].Value);
             return !string.IsNullOrEmpty(value);
+        }
+
+        private static bool TryReadOptionalCommandId(string body, out string commandId)
+        {
+            commandId = null;
+
+            string candidate;
+            if (!TryReadString(body, "commandId", out candidate))
+            {
+                return false;
+            }
+
+            if (!Regex.IsMatch(candidate, "^[A-Za-z0-9_-]{1,80}$"))
+            {
+                return false;
+            }
+
+            commandId = candidate;
+            return true;
         }
 
         private static bool TryReadInt(string body, string fieldName, out int value)
