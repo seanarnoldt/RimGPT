@@ -15,6 +15,7 @@ from context_telemetry import (
     measure_context,
     serialized_chars,
 )
+from state_store import StateStore, StateStoreError
 from tools import TOOLS, convert_blueprint_placements, is_read_only_tool, tool_call_to_bridge_command
 
 DEFAULT_MAX_TOOL_ROUNDS = 8
@@ -92,6 +93,7 @@ class AgentController:
         max_model_requests_per_cycle: int = DEFAULT_MAX_MODEL_REQUESTS_PER_CYCLE,
         pricing: Pricing | None = None,
         client: Any | None = None,
+        state_store: StateStore | None = None,
     ) -> None:
         self.bridge = bridge
         self.model = model
@@ -104,6 +106,7 @@ class AgentController:
         self.max_model_requests_per_cycle = max_model_requests_per_cycle
         self.pricing = pricing or Pricing.from_environment()
         self.client = client or OpenAI()
+        self.state_store = state_store or StateStore()
         self.uncertain_commands: dict[str, dict[str, Any]] = {}
         self.current_state: dict[str, Any] | None = None
         self._last_batch_had_write = False
@@ -124,7 +127,7 @@ class AgentController:
         print(f"[STATE] Bridge health: {health.get('status')} ({health.get('bridge')})")
 
         state = self.bridge.get_state()
-        self.current_state = state
+        self.current_state = self._accept_authoritative_state(state)
         print(f"[STATE] {summarize_state(state)}")
 
         print(f"[MODEL] Requesting one decision cycle from {self.model}")
@@ -156,6 +159,12 @@ class AgentController:
             print(f"[MODEL] Final assessment: {assessment.strip()}")
         else:
             print("[MODEL] Final assessment: no text returned")
+
+        if self.termination_reason is None and self.current_state is not None:
+            try:
+                self.state_store.set_decision_baseline(self.current_state)
+            except StateStoreError as exc:
+                print(f"[WARNING] Could not persist decision baseline: {exc}")
 
     def _handle_tool_rounds(self, response: Any) -> Any:
         self._ensure_safety_state()
@@ -403,6 +412,15 @@ class AgentController:
         self.carried_context_chars = 0
         self.cycle_cost = 0.0
 
+    def _accept_authoritative_state(self, state: dict[str, Any]) -> dict[str, Any]:
+        store = getattr(self, "state_store", None)
+        if store is not None:
+            try:
+                store.update_current_state(state)
+            except StateStoreError as exc:
+                print(f"[WARNING] Could not persist authoritative state: {exc}")
+        return state
+
     def _request_model(
         self,
         input_items: list[dict[str, Any]],
@@ -556,7 +574,7 @@ class AgentController:
                 state = self.bridge.wait_for_state_after(after_version, timeout_ms=3000)
                 if state.get("fresh") is False:
                     stale_state = state.get("state") if isinstance(state.get("state"), dict) else state
-                    self.current_state = stale_state
+                    self.current_state = self._accept_authoritative_state(stale_state)
                     print(f"[WARNING] No post-command snapshot newer than version {after_version}")
                     print(f"[STATE] Post-action stale {summarize_state(stale_state)}")
                     text = (
@@ -565,7 +583,7 @@ class AgentController:
                         + json.dumps(stale_state, separators=(",", ":"))
                     )
                 else:
-                    self.current_state = state
+                    self.current_state = self._accept_authoritative_state(state)
                     new_version = snapshot_version(state)
                     print(f"[STATE] Post-action authoritative version={new_version} {summarize_state(state)}")
                     text = (
@@ -575,7 +593,7 @@ class AgentController:
                     )
             else:
                 state = self.bridge.get_state()
-                self.current_state = state
+                self.current_state = self._accept_authoritative_state(state)
                 print(f"[STATE] Current {summarize_state(state)}")
                 text = (
                     "Current RimWorld state after a read-only/no-mutation tool round.\n\n"

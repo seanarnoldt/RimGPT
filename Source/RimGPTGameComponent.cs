@@ -10,9 +10,33 @@ namespace RimGPT
         private const int MaxReadRequestsPerFrame = 8;
         private int nextSnapshotUpdateMillis;
         private static bool dispatcherActiveLogged;
+        private string colonyLineageId;
 
         public RimGPTGameComponent(Game game)
         {
+        }
+
+        public string ColonyLineageId
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(colonyLineageId))
+                {
+                    colonyLineageId = Guid.NewGuid().ToString("N");
+                }
+
+                return colonyLineageId;
+            }
+        }
+
+        public override void ExposeData()
+        {
+            base.ExposeData();
+            Scribe_Values.Look(ref colonyLineageId, "rimGPTColonyLineageId");
+            if (Scribe.mode == LoadSaveMode.PostLoadInit && string.IsNullOrEmpty(colonyLineageId))
+            {
+                colonyLineageId = Guid.NewGuid().ToString("N");
+            }
         }
 
         public override void FinalizeInit()

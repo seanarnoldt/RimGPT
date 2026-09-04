@@ -102,3 +102,26 @@ curl 'http://127.0.0.1:47831/growable-plants'
 ```
 
 Every `/state` response includes `snapshot.version`, `snapshot.capturedAtUtc`, and `snapshot.ticksGame`. After write-command batches, the controller waits for `/state?afterVersion=<oldVersion>` before treating post-action state as authoritative.
+
+## Local StateStore
+
+The controller persists complete authoritative `/state` snapshots locally under
+`Controller/state/<colony-key>/`. This runtime directory is intentionally
+gitignored. Each colony directory contains:
+
+- `current_state.json`: latest authoritative state.
+- `metadata.json`: persistence-format, state-schema, snapshot, map, and lineage metadata.
+- `decision_baseline.json`: a separately managed future diff baseline.
+
+RimGPT stores a non-gameplay GUID in its `GameComponent` and exposes it as
+`game.colonyLineageId`. It is preserved by normal saves and Save As, while an
+unrelated save receives a different value. The controller hashes this ID into a
+filesystem-safe colony key, so state and decision baselines cannot cross into a
+different colony directory.
+
+Snapshots are written atomically. Invalid JSON, unsupported StateStore formats,
+schema changes, or identity mismatches are rejected safely; questionable files
+are retained with an `.invalid-...` suffix for diagnosis. `current_state` is
+updated from every authoritative bridge fetch. `decision_baseline` is only
+advanced after a normally completed model decision cycle, never on ordinary
+state refreshes.

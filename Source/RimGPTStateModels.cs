@@ -33,6 +33,7 @@ namespace RimGPT
         public string Date;
         public string TimeOfDay;
         public string CurrentMapId;
+        public string ColonyLineageId;
     }
 
     public sealed class RimGPTColonyState

@@ -50,6 +50,7 @@ namespace RimGPT
             WriteStringField(json, "date", game.Date, true);
             WriteStringField(json, "timeOfDay", game.TimeOfDay, true);
             WriteStringField(json, "currentMapId", game.CurrentMapId, true);
+            WriteStringField(json, "colonyLineageId", game.ColonyLineageId, true);
             json.Append("}");
         }
 

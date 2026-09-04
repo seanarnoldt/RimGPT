@@ -63,6 +63,11 @@ namespace RimGPT
             game.Date = SafeString(delegate { return GenDate.DateFullStringAt(ticksAbs, longLat); });
             game.TimeOfDay = SafeString(delegate { return GenDate.HourOfDay(ticksAbs, longLat.x).ToString("00") + ":00"; });
             game.CurrentMapId = "map-" + map.uniqueID;
+            game.ColonyLineageId = SafeString(delegate
+            {
+                RimGPTGameComponent component = Current.Game.GetComponent<RimGPTGameComponent>();
+                return component != null ? component.ColonyLineageId : null;
+            });
             return game;
         }
 
