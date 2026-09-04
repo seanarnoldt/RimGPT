@@ -65,6 +65,26 @@ class RimWorldBridge:
     def check_build_placements(self, placements: list[dict[str, Any]]) -> dict[str, Any]:
         return self._request_json("POST", "/build/check", json={"placements": placements})
 
+    def check_zone_placement(
+        self,
+        zone_type: str,
+        min_x: int,
+        min_z: int,
+        max_x: int,
+        max_z: int,
+    ) -> dict[str, Any]:
+        return self._request_json(
+            "GET",
+            "/zone/check",
+            params={
+                "zoneType": zone_type,
+                "minX": min_x,
+                "minZ": min_z,
+                "maxX": max_x,
+                "maxZ": max_z,
+            },
+        )
+
     def list_growable_plants(self) -> dict[str, Any]:
         return self._request_json("GET", "/growable-plants")
 

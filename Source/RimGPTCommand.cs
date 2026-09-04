@@ -47,6 +47,8 @@ namespace RimGPT
         public int MinZ { get; set; }
         public int MaxX { get; set; }
         public int MaxZ { get; set; }
+        public int MinimumValidCells { get; set; }
+        public bool HasMinimumValidCells { get; set; }
         public string ZoneId { get; set; }
         public string StoragePriority { get; set; }
         public string Preset { get; set; }

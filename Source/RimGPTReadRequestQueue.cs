@@ -11,7 +11,8 @@ namespace RimGPT
         BuildOptions,
         BuildInfo,
         GrowablePlants,
-        CheckBuildPlacements
+        CheckBuildPlacements,
+        CheckZonePlacement
     }
 
     public sealed class RimGPTReadRequest
@@ -24,6 +25,7 @@ namespace RimGPT
         public string Category;
         public string Search;
         public string DefName;
+        public string ZoneType;
         public System.Collections.Generic.List<RimGPTBlueprintPlacement> Placements;
         public int QueuedAtMillis;
         public string Json;

@@ -16,6 +16,7 @@ namespace RimGPT
         private const int MaxOverviewPoints = 40;
         private const int MaxOverviewZones = 40;
         private const int MaxStateBuildings = 160;
+        private const int MaxZoneCheckCells = 400;
 
         public static string BuildMapOverviewJson(Map map)
         {
@@ -188,8 +189,161 @@ namespace RimGPT
             WriteBool(json, "buildable", walkable && edifice == null && mineable == null, true);
             WriteBool(json, "roofed", roofed, true);
             WriteBool(json, "water", water, true);
+            string growingZoneReason;
+            string stockpileZoneReason;
+            WriteBool(json, "canCreateGrowingZone", RimGPTZoneUtility.CanCreateZoneCell(map, cell, RimGPTZonePlacementType.Growing, out growingZoneReason), true);
+            WriteBool(json, "canCreateStockpile", RimGPTZoneUtility.CanCreateZoneCell(map, cell, RimGPTZonePlacementType.Stockpile, out stockpileZoneReason), true);
             WriteAffordances(json, map, cell, true);
             json.Append("}");
+            return json.ToString();
+        }
+
+        public static string BuildCheckZonePlacementJson(string zoneTypeName, int minX, int minZ, int maxX, int maxZ)
+        {
+            if (Current.Game == null || Find.CurrentMap == null)
+            {
+                return "{\"gameLoaded\":false}";
+            }
+
+            RimGPTZonePlacementType zoneType;
+            if (!RimGPTZoneUtility.TryParseZoneType(zoneTypeName, out zoneType))
+            {
+                return "{\"error\":\"unknownZoneType\"}";
+            }
+
+            Map map = Find.CurrentMap;
+            RimGPTZoneUtility.NormalizeRect(ref minX, ref minZ, ref maxX, ref maxZ);
+            int width = maxX - minX + 1;
+            int height = maxZ - minZ + 1;
+            if (width > MaxRegionWidth || height > MaxRegionHeight)
+            {
+                return "{\"error\":\"regionTooLarge\",\"maxWidth\":" + MaxRegionWidth + ",\"maxHeight\":" + MaxRegionHeight + "}";
+            }
+
+            int requested = Math.Max(0, width) * Math.Max(0, height);
+            int valid = 0;
+            int invalid = 0;
+            bool foundValid = false;
+            CellBounds validBounds = new CellBounds();
+            Dictionary<string, int> reasons = new Dictionary<string, int>();
+            List<IntVec3> cells = new List<IntVec3>();
+            List<RimGPTZoneCellResult> checkedCells = new List<RimGPTZoneCellResult>();
+
+            for (int x = minX; x <= maxX; x++)
+            {
+                for (int z = minZ; z <= maxZ; z++)
+                {
+                    IntVec3 cell = new IntVec3(x, 0, z);
+                    string reason;
+                    bool cellValid = RimGPTZoneUtility.CanCreateZoneCell(map, cell, zoneType, out reason);
+                    if (checkedCells.Count < MaxZoneCheckCells)
+                    {
+                        checkedCells.Add(new RimGPTZoneCellResult { Cell = cell, Valid = cellValid, Reason = reason });
+                    }
+
+                    if (cellValid)
+                    {
+                        valid++;
+                        validBounds.Include(cell, ref foundValid);
+                        if (cells.Count < 240)
+                        {
+                            cells.Add(cell);
+                        }
+                    }
+                    else
+                    {
+                        invalid++;
+                        if (string.IsNullOrEmpty(reason))
+                        {
+                            reason = "Cell cannot be added to this zone";
+                        }
+
+                        int count;
+                        reasons.TryGetValue(reason, out count);
+                        reasons[reason] = count + 1;
+                    }
+                }
+            }
+
+            StringBuilder json = new StringBuilder(8192);
+            json.Append("{\"schemaVersion\":2,\"gameLoaded\":true");
+            WriteString(json, "zoneType", zoneType == RimGPTZonePlacementType.Growing ? "growing" : "stockpile", true);
+            json.Append(",\"requestedBounds\":{");
+            WriteInt(json, "minX", minX, false);
+            WriteInt(json, "minZ", minZ, true);
+            WriteInt(json, "maxX", maxX, true);
+            WriteInt(json, "maxZ", maxZ, true);
+            json.Append("}");
+            WriteInt(json, "requestedCells", requested, true);
+            WriteInt(json, "validCells", valid, true);
+            WriteInt(json, "invalidCells", invalid, true);
+            WriteInt(json, "cellLimit", MaxZoneCheckCells, true);
+            WriteName(json, "validBounds", true);
+            if (foundValid)
+            {
+                WriteBounds(json, validBounds);
+            }
+            else
+            {
+                json.Append("null");
+            }
+
+            WriteName(json, "validCellSample", true);
+            json.Append("[");
+            for (int i = 0; i < cells.Count; i++)
+            {
+                if (i > 0)
+                {
+                    json.Append(",");
+                }
+
+                IntVec3 cell = cells[i];
+                json.Append("{");
+                WriteInt(json, "x", cell.x, false);
+                WriteInt(json, "z", cell.z, true);
+                TerrainDef terrain = cell.GetTerrain(map);
+                WriteString(json, "terrain", terrain != null ? terrain.defName : null, true);
+                WriteFloat(json, "fertility", terrain != null ? terrain.fertility : 0f, true);
+                json.Append("}");
+            }
+            json.Append("]");
+
+            WriteName(json, "cells", true);
+            json.Append("[");
+            for (int i = 0; i < checkedCells.Count; i++)
+            {
+                if (i > 0)
+                {
+                    json.Append(",");
+                }
+
+                RimGPTZoneCellResult cellResult = checkedCells[i];
+                json.Append("{");
+                WriteInt(json, "x", cellResult.Cell.x, false);
+                WriteInt(json, "z", cellResult.Cell.z, true);
+                WriteBool(json, "valid", cellResult.Valid, true);
+                WriteString(json, "reason", cellResult.Valid ? null : cellResult.Reason, true);
+                json.Append("}");
+            }
+            json.Append("]");
+
+            WriteName(json, "invalidReasons", true);
+            json.Append("[");
+            bool wroteReason = false;
+            foreach (KeyValuePair<string, int> reason in reasons)
+            {
+                if (wroteReason)
+                {
+                    json.Append(",");
+                }
+
+                json.Append("{");
+                WriteString(json, "reason", reason.Key, false);
+                WriteInt(json, "count", reason.Value, true);
+                json.Append("}");
+                wroteReason = true;
+            }
+            json.Append("]}");
             return json.ToString();
         }
 

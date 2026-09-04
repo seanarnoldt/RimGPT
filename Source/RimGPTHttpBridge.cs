@@ -164,6 +164,12 @@ namespace RimGPT
                     return;
                 }
 
+                if (method == "GET" && path == "/zone/check")
+                {
+                    HandleZoneCheck(context);
+                    return;
+                }
+
                 if (method == "GET" && path == "/growable-plants")
                 {
                     HandleGrowablePlants(context);
@@ -369,6 +375,37 @@ namespace RimGPT
             {
                 Type = RimGPTReadRequestType.CheckBuildPlacements,
                 Placements = placements
+            };
+            int statusCode;
+            string json = RimGPTReadRequestQueue.EnqueueAndWait(request, out statusCode);
+            WriteJson(context.Response, statusCode, json);
+        }
+
+        private static void HandleZoneCheck(HttpListenerContext context)
+        {
+            string zoneType = context.Request.QueryString["zoneType"];
+            int minX;
+            int minZ;
+            int maxX;
+            int maxZ;
+            if (string.IsNullOrEmpty(zoneType)
+                || !TryReadQueryInt(context, "minX", out minX)
+                || !TryReadQueryInt(context, "minZ", out minZ)
+                || !TryReadQueryInt(context, "maxX", out maxX)
+                || !TryReadQueryInt(context, "maxZ", out maxZ))
+            {
+                WriteJson(context.Response, 400, "{\"error\":\"missingZoneCheckParameters\"}");
+                return;
+            }
+
+            RimGPTReadRequest request = new RimGPTReadRequest
+            {
+                Type = RimGPTReadRequestType.CheckZonePlacement,
+                ZoneType = zoneType,
+                MinX = minX,
+                MinZ = minZ,
+                MaxX = maxX,
+                MaxZ = maxZ
             };
             int statusCode;
             string json = RimGPTReadRequestQueue.EnqueueAndWait(request, out statusCode);
@@ -673,6 +710,18 @@ namespace RimGPT
                 command.MinZ = minZ;
                 command.MaxX = maxX;
                 command.MaxZ = maxZ;
+                int minimumValidCells;
+                if (TryReadOptionalInt(body, "minimumValidCells", out minimumValidCells))
+                {
+                    if (minimumValidCells < 1 || minimumValidCells > 1000)
+                    {
+                        error = "invalidMinimumValidCells";
+                        return false;
+                    }
+
+                    command.HasMinimumValidCells = true;
+                    command.MinimumValidCells = minimumValidCells;
+                }
                 return true;
             }
 
@@ -957,6 +1006,24 @@ namespace RimGPT
             }
 
             return int.TryParse(match.Groups["value"].Value, out value);
+        }
+
+        private static bool TryReadOptionalInt(string body, string fieldName, out int value)
+        {
+            value = 0;
+            if (string.IsNullOrEmpty(body))
+            {
+                return false;
+            }
+
+            Match match = Regex.Match(body, "\"" + Regex.Escape(fieldName) + "\"\\s*:\\s*(?<value>-?\\d+|null)");
+            if (!match.Success)
+            {
+                return false;
+            }
+
+            string raw = match.Groups["value"].Value;
+            return !raw.Equals("null", StringComparison.OrdinalIgnoreCase) && int.TryParse(raw, out value);
         }
 
         private static bool TryReadQueryInt(HttpListenerContext context, string fieldName, out int value)

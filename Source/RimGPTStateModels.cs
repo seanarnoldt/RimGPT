@@ -54,6 +54,7 @@ namespace RimGPT
         public RimGPTHealthState Health;
         public RimGPTNeedsState Needs;
         public List<RimGPTSkillState> Skills;
+        public List<RimGPTWorkState> Work;
         public List<RimGPTWorkPriorityState> WorkPriorities;
         public List<RimGPTEquipmentState> Equipment;
     }
@@ -105,6 +106,16 @@ namespace RimGPT
     public sealed class RimGPTWorkPriorityState
     {
         public string DefName;
+        public int Priority;
+    }
+
+    public sealed class RimGPTWorkState
+    {
+        public string DefName;
+        public string Label;
+        public bool Capable;
+        public bool Disabled;
+        public string DisabledReason;
         public int Priority;
     }
 

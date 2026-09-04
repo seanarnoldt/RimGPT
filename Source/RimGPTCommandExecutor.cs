@@ -61,7 +61,7 @@ namespace RimGPT
                 case RimGPTCommandType.SetStockpilePreset:
                     return SetStockpilePreset(command.ZoneId, command.Preset);
                 case RimGPTCommandType.CreateGrowingZone:
-                    return CreateGrowingZone(command.MinX, command.MinZ, command.MaxX, command.MaxZ);
+                    return CreateGrowingZone(command.MinX, command.MinZ, command.MaxX, command.MaxZ, command.HasMinimumValidCells, command.MinimumValidCells);
                 case RimGPTCommandType.SetGrowingZonePlant:
                     return SetGrowingZonePlant(command.ZoneId, command.PlantDef);
                 case RimGPTCommandType.PlaceBlueprint:
@@ -214,6 +214,11 @@ namespace RimGPT
             }
 
             pawn.workSettings.EnableAndInitializeIfNotAlreadyInitialized();
+            if (Find.PlaySettings != null && !Find.PlaySettings.useWorkPriorities)
+            {
+                Find.PlaySettings.useWorkPriorities = true;
+            }
+
             pawn.workSettings.SetPriority(workType, priority);
             return RimGPTCommandExecutionResult.Succeeded("Work priority set");
         }
@@ -493,7 +498,7 @@ namespace RimGPT
 
             Zone_Stockpile zone = new Zone_Stockpile(StorageSettingsPreset.DefaultStockpile, map.zoneManager);
             map.zoneManager.RegisterZone(zone);
-            int added = AddValidZoneCells(zone, map, minX, minZ, maxX, maxZ, false);
+            int added = AddValidZoneCells(zone, map, minX, minZ, maxX, maxZ, RimGPTZonePlacementType.Stockpile);
             if (added == 0)
             {
                 zone.Delete();
@@ -570,7 +575,7 @@ namespace RimGPT
             return RimGPTCommandExecutionResult.Succeeded("Stockpile preset set");
         }
 
-        private static RimGPTCommandExecutionResult CreateGrowingZone(int minX, int minZ, int maxX, int maxZ)
+        private static RimGPTCommandExecutionResult CreateGrowingZone(int minX, int minZ, int maxX, int maxZ, bool hasMinimumValidCells, int minimumValidCells)
         {
             Map map;
             RimGPTCommandExecutionResult mapResult = TryGetCurrentMap(out map);
@@ -579,9 +584,15 @@ namespace RimGPT
                 return mapResult;
             }
 
+            List<IntVec3> validCells = RimGPTZoneUtility.CollectValidCells(map, minX, minZ, maxX, maxZ, RimGPTZonePlacementType.Growing);
+            if (hasMinimumValidCells && validCells.Count < minimumValidCells)
+            {
+                return RimGPTCommandExecutionResult.Failure("Only " + validCells.Count.ToString(CultureInfo.InvariantCulture) + " valid growing-zone cells were available, below minimumValidCells " + minimumValidCells.ToString(CultureInfo.InvariantCulture));
+            }
+
             Zone_Growing zone = new Zone_Growing(map.zoneManager);
             map.zoneManager.RegisterZone(zone);
-            int added = AddValidZoneCells(zone, map, minX, minZ, maxX, maxZ, true);
+            int added = AddValidZoneCells(zone, validCells);
             if (added == 0)
             {
                 zone.Delete();
@@ -751,36 +762,19 @@ namespace RimGPT
             return RimGPTCommandExecutionResult.Succeeded("Deconstruct designation added");
         }
 
-        private static int AddValidZoneCells(Zone zone, Map map, int minX, int minZ, int maxX, int maxZ, bool growing)
+        private static int AddValidZoneCells(Zone zone, Map map, int minX, int minZ, int maxX, int maxZ, RimGPTZonePlacementType type)
         {
-            NormalizeRect(ref minX, ref minZ, ref maxX, ref maxZ);
+            List<IntVec3> validCells = RimGPTZoneUtility.CollectValidCells(map, minX, minZ, maxX, maxZ, type);
+            return AddValidZoneCells(zone, validCells);
+        }
+
+        private static int AddValidZoneCells(Zone zone, List<IntVec3> validCells)
+        {
             int added = 0;
-            for (int x = minX; x <= maxX; x++)
+            for (int i = 0; i < validCells.Count; i++)
             {
-                for (int z = minZ; z <= maxZ; z++)
-                {
-                    IntVec3 cell = new IntVec3(x, 0, z);
-                    if (!cell.InBounds(map) || cell.Fogged(map) || map.zoneManager.ZoneAt(cell) != null)
-                    {
-                        continue;
-                    }
-
-                    if (growing)
-                    {
-                        ThingDef rice = DefDatabase<ThingDef>.GetNamedSilentFail("Plant_Rice");
-                        if (rice == null || !PlantUtility.CanNowPlantAt(rice, cell, map, false))
-                        {
-                            continue;
-                        }
-                    }
-                    else if (!cell.Walkable(map))
-                    {
-                        continue;
-                    }
-
-                    zone.AddCell(cell);
-                    added++;
-                }
+                zone.AddCell(validCells[i]);
+                added++;
             }
 
             return added;

@@ -89,6 +89,24 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "type": "function",
+        "name": "check_zone_placement",
+        "description": "Read-only validation for a planned growing or stockpile zone rectangle using normal RimWorld zone placement rules. Use before create_growing_zone/create_stockpile on mixed terrain; fertility alone is not enough.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "zone_type": {"type": "string", "enum": ["growing", "stockpile"]},
+                "min_x": {"type": "integer"},
+                "min_z": {"type": "integer"},
+                "max_x": {"type": "integer"},
+                "max_z": {"type": "integer"},
+            },
+            "required": ["zone_type", "min_x", "min_z", "max_x", "max_z"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
         "name": "set_speed",
         "description": "Set RimWorld game speed. Use 0 for paused, 1 for normal, 2 for fast, and 3 for superfast.",
         "strict": True,
@@ -386,7 +404,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "name": "create_growing_zone",
-        "description": "Create a normal growing zone on visible currently plantable cells in a current-map x/z rectangle. Use inspect_map and list_growable_plants first when terrain or plant def is uncertain.",
+        "description": "Create a normal growing zone on visible valid cells in a current-map x/z rectangle. Use inspect_map/check_zone_placement first. minimum_valid_cells prevents accidental tiny farms; omit or use null to preserve permissive behavior.",
         "strict": True,
         "parameters": {
             "type": "object",
@@ -395,8 +413,12 @@ TOOLS: list[dict[str, Any]] = [
                 "min_z": {"type": "integer"},
                 "max_x": {"type": "integer"},
                 "max_z": {"type": "integer"},
+                "minimum_valid_cells": {
+                    "type": ["integer", "null"],
+                    "description": "Optional minimum number of valid cells required before creating the zone. Use this to avoid accidental 1-2 cell farms.",
+                },
             },
-            "required": ["min_x", "min_z", "max_x", "max_z"],
+            "required": ["min_x", "min_z", "max_x", "max_z", "minimum_valid_cells"],
             "additionalProperties": False,
         },
     },
@@ -492,7 +514,14 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 
-READ_ONLY_TOOLS = {"inspect_map", "list_build_options", "get_build_info", "list_growable_plants", "check_build_placements"}
+READ_ONLY_TOOLS = {
+    "inspect_map",
+    "list_build_options",
+    "get_build_info",
+    "list_growable_plants",
+    "check_build_placements",
+    "check_zone_placement",
+}
 
 
 def is_read_only_tool(name: str) -> bool:
@@ -568,13 +597,16 @@ def tool_call_to_bridge_command(name: str, arguments: dict[str, Any]) -> dict[st
     if name == "set_stockpile_preset":
         return {"command": "setStockpilePreset", "zoneId": arguments["zone_id"], "preset": arguments["preset"]}
     if name == "create_growing_zone":
-        return {
+        command = {
             "command": "createGrowingZone",
             "minX": arguments["min_x"],
             "minZ": arguments["min_z"],
             "maxX": arguments["max_x"],
             "maxZ": arguments["max_z"],
         }
+        if arguments.get("minimum_valid_cells") is not None:
+            command["minimumValidCells"] = arguments["minimum_valid_cells"]
+        return command
     if name == "set_growing_zone_plant":
         return {"command": "setGrowingZonePlant", "zoneId": arguments["zone_id"], "plantDef": arguments["plant_def"]}
     if name == "place_blueprint":

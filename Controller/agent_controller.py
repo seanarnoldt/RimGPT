@@ -31,9 +31,13 @@ Treat the supplied RimWorld state as authoritative.
 
 Do not invent pawn IDs, map coordinates, work types, resources, threats, or other game state.
 
+Use colonists[].work as the authoritative work capability and priority view. Never assign work if capable=false. Do not assign a work priority if the current priority already equals the desired value. Repeat set_work_priority only if a fresh authoritative state shows it did not persist.
+
 Do not invent buildDef, stuffDef, plantDef, or zone IDs. Use list_build_options, get_build_info, list_growable_plants, and the supplied state when exact defs or IDs are uncertain.
 
 Inspect relevant map regions before committing major construction, growing zones, or storage zones.
+
+Growing zones require normal RimWorld zone validity, not only fertile terrain. Prefer contiguous cells where inspect_map reports canCreateGrowingZone=true, use check_zone_placement before creating farms, and pass minimum_valid_cells to create_growing_zone to avoid accidental one- or two-cell farms.
 
 Prefer reversible and low-risk actions when information is incomplete.
 
@@ -376,6 +380,14 @@ class AgentController:
                 result = self.bridge.list_growable_plants()
             elif name == "check_build_placements":
                 result = self.bridge.check_build_placements(convert_blueprint_placements(arguments["placements"]))
+            elif name == "check_zone_placement":
+                result = self.bridge.check_zone_placement(
+                    arguments["zone_type"],
+                    arguments["min_x"],
+                    arguments["min_z"],
+                    arguments["max_x"],
+                    arguments["max_z"],
+                )
             else:
                 raise ValueError(f"Unsupported read-only tool: {name}")
         except Exception as exc:

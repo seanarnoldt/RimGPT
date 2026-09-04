@@ -109,6 +109,7 @@ namespace RimGPT
             colonist.Health = BuildHealth(pawn);
             colonist.Needs = BuildNeeds(pawn);
             colonist.Skills = BuildSkills(pawn);
+            colonist.Work = BuildWork(pawn);
             colonist.WorkPriorities = BuildWorkPriorities(pawn);
             colonist.Equipment = BuildEquipment(pawn);
             return colonist;
@@ -226,6 +227,7 @@ namespace RimGPT
                 return result;
             }
 
+            pawn.workSettings.EnableAndInitializeIfNotAlreadyInitialized();
             List<WorkTypeDef> workTypes = DefDatabase<WorkTypeDef>.AllDefsListForReading;
             for (int i = 0; i < workTypes.Count; i++)
             {
@@ -239,6 +241,39 @@ namespace RimGPT
                 priority.DefName = workType.defName;
                 priority.Priority = SafeInt(delegate { return pawn.workSettings.GetPriority(workType); });
                 result.Add(priority);
+            }
+
+            return result;
+        }
+
+        private static List<RimGPTWorkState> BuildWork(Pawn pawn)
+        {
+            List<RimGPTWorkState> result = new List<RimGPTWorkState>();
+            if (pawn.workSettings == null)
+            {
+                return result;
+            }
+
+            pawn.workSettings.EnableAndInitializeIfNotAlreadyInitialized();
+            List<WorkTypeDef> workTypes = DefDatabase<WorkTypeDef>.AllDefsListForReading;
+            for (int i = 0; i < workTypes.Count; i++)
+            {
+                WorkTypeDef workType = workTypes[i];
+                if (workType == null || !workType.visible)
+                {
+                    continue;
+                }
+
+                bool disabled = SafeBool(delegate { return pawn.WorkTagIsDisabled(workType.workTags); });
+                int priority = SafeInt(delegate { return pawn.workSettings.GetPriority(workType); });
+                RimGPTWorkState work = new RimGPTWorkState();
+                work.DefName = workType.defName;
+                work.Label = !string.IsNullOrEmpty(workType.labelShort) ? workType.labelShort : workType.label;
+                work.Disabled = disabled || priority == 0;
+                work.Capable = !disabled;
+                work.DisabledReason = disabled ? "Pawn is incapable of this work type" : null;
+                work.Priority = priority;
+                result.Add(work);
             }
 
             return result;
@@ -635,6 +670,18 @@ namespace RimGPT
             catch
             {
                 return 0f;
+            }
+        }
+
+        private static bool SafeBool(Func<bool> getter)
+        {
+            try
+            {
+                return getter();
+            }
+            catch
+            {
+                return false;
             }
         }
 

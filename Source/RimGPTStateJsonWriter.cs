@@ -84,6 +84,7 @@ namespace RimGPT
                 WriteHealthField(json, "health", colonist.Health, true);
                 WriteNeedsField(json, "needs", colonist.Needs, true);
                 WriteSkillsField(json, "skills", colonist.Skills, true);
+                WriteWorkField(json, "work", colonist.Work, true);
                 WriteWorkPrioritiesField(json, "workPriorities", colonist.WorkPriorities, true);
                 WriteEquipmentArrayField(json, "equipment", colonist.Equipment, true);
                 json.Append("}");
@@ -355,6 +356,33 @@ namespace RimGPT
                 WriteStringField(json, "defName", priority.DefName, false);
                 WriteIntField(json, "priority", priority.Priority, true);
                 json.Append("}");
+            }
+            json.Append("]");
+        }
+
+        private static void WriteWorkField(StringBuilder json, string name, List<RimGPTWorkState> workItems, bool comma)
+        {
+            WriteName(json, name, comma);
+            json.Append("[");
+            if (workItems != null)
+            {
+                for (int i = 0; i < workItems.Count; i++)
+                {
+                    if (i > 0)
+                    {
+                        json.Append(",");
+                    }
+
+                    RimGPTWorkState work = workItems[i];
+                    json.Append("{");
+                    WriteStringField(json, "defName", work.DefName, false);
+                    WriteStringField(json, "label", work.Label, true);
+                    WriteBoolField(json, "capable", work.Capable, true);
+                    WriteBoolField(json, "disabled", work.Disabled, true);
+                    WriteStringField(json, "disabledReason", work.DisabledReason, true);
+                    WriteIntField(json, "priority", work.Priority, true);
+                    json.Append("}");
+                }
             }
             json.Append("]");
         }

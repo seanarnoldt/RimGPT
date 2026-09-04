@@ -10,6 +10,7 @@ class ToolV2BTests(unittest.TestCase):
         self.assertTrue(is_read_only_tool("get_build_info"))
         self.assertTrue(is_read_only_tool("list_growable_plants"))
         self.assertTrue(is_read_only_tool("check_build_placements"))
+        self.assertTrue(is_read_only_tool("check_zone_placement"))
         self.assertFalse(is_read_only_tool("create_stockpile"))
 
     def test_create_stockpile_mapping(self) -> None:
@@ -63,6 +64,20 @@ class ToolV2BTests(unittest.TestCase):
         )
 
     def test_zone_and_cancel_mappings(self) -> None:
+        self.assertEqual(
+            tool_call_to_bridge_command(
+                "create_growing_zone",
+                {"min_x": 1, "min_z": 2, "max_x": 3, "max_z": 4, "minimum_valid_cells": 8},
+            ),
+            {"command": "createGrowingZone", "minX": 1, "minZ": 2, "maxX": 3, "maxZ": 4, "minimumValidCells": 8},
+        )
+        self.assertEqual(
+            tool_call_to_bridge_command(
+                "create_growing_zone",
+                {"min_x": 1, "min_z": 2, "max_x": 3, "max_z": 4, "minimum_valid_cells": None},
+            ),
+            {"command": "createGrowingZone", "minX": 1, "minZ": 2, "maxX": 3, "maxZ": 4},
+        )
         self.assertEqual(
             tool_call_to_bridge_command("set_growing_zone_plant", {"zone_id": "zone-1", "plant_def": "Plant_Rice"}),
             {"command": "setGrowingZonePlant", "zoneId": "zone-1", "plantDef": "Plant_Rice"},
