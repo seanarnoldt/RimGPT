@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+  <name>RimGPT</name>
+  <author>Sean Arnold</author>
+  <packageId>seanarnoldt.rimgpt</packageId>
+  <supportedVersions>
+    <li>1.6</li>
+  </supportedVersions>
+  <description>
+    Structured RimWorld bridge foundation for future external controller integration.
+  </description>
+</ModMetaData>

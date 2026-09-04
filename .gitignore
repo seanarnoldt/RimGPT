@@ -1,0 +1,8 @@
+Assemblies/*.dll
+Assemblies/*.pdb
+Assemblies/*.mdb
+obj/
+bin/
+*.user
+*.suo
+.DS_Store
