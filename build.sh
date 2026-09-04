@@ -16,6 +16,7 @@ required_refs=(
   "$MANAGED_DIR/Assembly-CSharp.dll"
   "$MANAGED_DIR/UnityEngine.dll"
   "$MANAGED_DIR/UnityEngine.CoreModule.dll"
+  "$MANAGED_DIR/netstandard.dll"
 )
 
 for ref in "${required_refs[@]}"; do
@@ -35,6 +36,7 @@ mcs \
   -reference:"${required_refs[0]}" \
   -reference:"${required_refs[1]}" \
   -reference:"${required_refs[2]}" \
+  -reference:"${required_refs[3]}" \
   "$MOD_DIR"/Source/*.cs
 
 echo "Built $OUTPUT_DLL"

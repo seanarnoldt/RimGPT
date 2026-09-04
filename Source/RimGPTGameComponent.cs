@@ -19,14 +19,6 @@ namespace RimGPT
             Log.Message("[RimGPT] Game component initialized");
         }
 
-        public override void GameComponentTick()
-        {
-            if (Find.TickManager.TicksGame % 30 == 0)
-            {
-                UpdateStateSnapshot();
-            }
-        }
-
         public override void GameComponentUpdate()
         {
             ProcessQueuedCommands();
@@ -35,7 +27,7 @@ namespace RimGPT
             if (now >= nextSnapshotUpdateMillis)
             {
                 UpdateStateSnapshot();
-                nextSnapshotUpdateMillis = now + 500;
+                nextSnapshotUpdateMillis = now + 1000;
             }
         }
 
