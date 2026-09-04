@@ -72,6 +72,48 @@ namespace RimGPT
                     return CancelAt(command.X, command.Z);
                 case RimGPTCommandType.DesignateDeconstruct:
                     return DesignateDeconstruct(command.ThingId);
+                case RimGPTCommandType.EquipWeapon:
+                    return EquipWeapon(command.PawnId, command.ThingId);
+                case RimGPTCommandType.DropPrimaryWeapon:
+                    return DropPrimaryWeapon(command.PawnId);
+                case RimGPTCommandType.WearApparel:
+                    return WearApparel(command.PawnId, command.ThingId);
+                case RimGPTCommandType.RemoveApparel:
+                    return RemoveApparel(command.PawnId, command.ThingId);
+                case RimGPTCommandType.AssignBed:
+                    return AssignBed(command.PawnId, command.BedId);
+                case RimGPTCommandType.UnassignBed:
+                    return UnassignBed(command.PawnId);
+                case RimGPTCommandType.AddBill:
+                    return AddBill(command.WorktableId, command.RecipeDef, command.RepeatMode, command.HasTargetCount, command.TargetCount);
+                case RimGPTCommandType.SetBillSuspended:
+                    return SetBillSuspended(command.WorktableId, command.BillId, command.Suspended);
+                case RimGPTCommandType.RemoveBill:
+                    return RemoveBill(command.WorktableId, command.BillId);
+                case RimGPTCommandType.SetBillTargetCount:
+                    return SetBillTargetCount(command.WorktableId, command.BillId, command.TargetCount);
+                case RimGPTCommandType.SetPowerSwitch:
+                    return SetPowerSwitch(command.ThingId, command.On);
+                case RimGPTCommandType.SetTargetFuelLevel:
+                    return SetTargetFuelLevel(command.ThingId, command.Level);
+                case RimGPTCommandType.CreateAllowedArea:
+                    return CreateAllowedArea(command.Label);
+                case RimGPTCommandType.SetAllowedAreaCells:
+                    return SetAllowedAreaCells(command.AreaId, command.Cells, command.Allowed);
+                case RimGPTCommandType.AssignAllowedArea:
+                    return AssignAllowedArea(command.PawnId, command.HasAreaId, command.AreaId);
+                case RimGPTCommandType.PrioritizeHaul:
+                    return PrioritizeJob(command.PawnId, command.ThingId);
+                case RimGPTCommandType.PrioritizeRescue:
+                    return PrioritizeRescue(command.PawnId, command.TargetPawnId);
+                case RimGPTCommandType.PrioritizeTend:
+                    return PrioritizeTend(command.PawnId, command.TargetPawnId);
+                case RimGPTCommandType.PrioritizeClean:
+                    return PrioritizeClean(command.PawnId, command.X, command.Z);
+                case RimGPTCommandType.PrioritizeRefuel:
+                    return PrioritizeRefuel(command.PawnId, command.ThingId);
+                case RimGPTCommandType.PrioritizeConstruct:
+                    return PrioritizeConstruct(command.PawnId, command.BlueprintOrFrameId);
                 default:
                     return RimGPTCommandExecutionResult.Failure("Unsupported command");
             }
@@ -762,6 +804,683 @@ namespace RimGPT
             return RimGPTCommandExecutionResult.Succeeded("Deconstruct designation added");
         }
 
+        private static RimGPTCommandExecutionResult EquipWeapon(string pawnId, string thingId)
+        {
+            Pawn pawn;
+            RimGPTCommandExecutionResult pawnLookup = TryGetPlayerColonist(pawnId, out pawn);
+            if (!pawnLookup.Success)
+            {
+                return pawnLookup;
+            }
+
+            Thing thing;
+            RimGPTCommandExecutionResult thingLookup = TryGetVisibleThing(thingId, out thing);
+            if (!thingLookup.Success)
+            {
+                return thingLookup;
+            }
+
+            ThingWithComps weapon = thing as ThingWithComps;
+            if (weapon == null || weapon.def == null || !weapon.def.IsWeapon)
+            {
+                return RimGPTCommandExecutionResult.Failure("Thing is not a weapon");
+            }
+
+            if (pawn.equipment != null && pawn.equipment.Primary == weapon)
+            {
+                return RimGPTCommandExecutionResult.Succeeded("Weapon already equipped");
+            }
+
+            if (thing.IsForbidden(Faction.OfPlayer))
+            {
+                return RimGPTCommandExecutionResult.Failure("Weapon is forbidden");
+            }
+
+            if (!pawn.CanReach(thing, PathEndMode.ClosestTouch, Danger.Deadly))
+            {
+                return RimGPTCommandExecutionResult.Failure("Pawn cannot reach weapon");
+            }
+
+            if (!pawn.CanReserve(thing))
+            {
+                return RimGPTCommandExecutionResult.Failure("Weapon is reserved");
+            }
+
+            Job job = JobMaker.MakeJob(JobDefOf.Equip, thing);
+            job.count = 1;
+            job.playerForced = true;
+            return pawn.jobs.TryTakeOrderedJob(job, null)
+                ? RimGPTCommandExecutionResult.Succeeded("Equip weapon order issued")
+                : RimGPTCommandExecutionResult.Failure("Equip weapon order was rejected");
+        }
+
+        private static RimGPTCommandExecutionResult DropPrimaryWeapon(string pawnId)
+        {
+            Pawn pawn;
+            RimGPTCommandExecutionResult lookup = TryGetPlayerColonist(pawnId, out pawn);
+            if (!lookup.Success)
+            {
+                return lookup;
+            }
+
+            ThingWithComps primary = pawn.equipment != null ? pawn.equipment.Primary : null;
+            if (primary == null)
+            {
+                return RimGPTCommandExecutionResult.Succeeded("Pawn has no primary weapon");
+            }
+
+            Job job = JobMaker.MakeJob(JobDefOf.DropEquipment, primary);
+            job.playerForced = true;
+            return pawn.jobs.TryTakeOrderedJob(job, null)
+                ? RimGPTCommandExecutionResult.Succeeded("Drop primary weapon order issued")
+                : RimGPTCommandExecutionResult.Failure("Drop weapon order was rejected");
+        }
+
+        private static RimGPTCommandExecutionResult WearApparel(string pawnId, string thingId)
+        {
+            Pawn pawn;
+            RimGPTCommandExecutionResult pawnLookup = TryGetPlayerColonist(pawnId, out pawn);
+            if (!pawnLookup.Success)
+            {
+                return pawnLookup;
+            }
+
+            Thing thing;
+            RimGPTCommandExecutionResult thingLookup = TryGetVisibleThing(thingId, out thing);
+            if (!thingLookup.Success)
+            {
+                return thingLookup;
+            }
+
+            Apparel apparel = thing as Apparel;
+            if (apparel == null || apparel.def == null || apparel.def.apparel == null)
+            {
+                return RimGPTCommandExecutionResult.Failure("Thing is not apparel");
+            }
+
+            if (apparel.Wearer == pawn)
+            {
+                return RimGPTCommandExecutionResult.Succeeded("Apparel already worn by pawn");
+            }
+
+            if (apparel.Wearer != null)
+            {
+                return RimGPTCommandExecutionResult.Failure("Apparel is already worn");
+            }
+
+            if (thing.IsForbidden(Faction.OfPlayer))
+            {
+                return RimGPTCommandExecutionResult.Failure("Apparel is forbidden");
+            }
+
+            if (!apparel.def.apparel.PawnCanWear(pawn, false) || !ApparelUtility.HasPartsToWear(pawn, apparel.def))
+            {
+                return RimGPTCommandExecutionResult.Failure("Pawn cannot wear this apparel");
+            }
+
+            if (!pawn.CanReach(thing, PathEndMode.ClosestTouch, Danger.Deadly))
+            {
+                return RimGPTCommandExecutionResult.Failure("Pawn cannot reach apparel");
+            }
+
+            if (!pawn.CanReserve(thing))
+            {
+                return RimGPTCommandExecutionResult.Failure("Apparel is reserved");
+            }
+
+            Job job = JobMaker.MakeJob(JobDefOf.Wear, thing);
+            job.count = 1;
+            job.playerForced = true;
+            return pawn.jobs.TryTakeOrderedJob(job, null)
+                ? RimGPTCommandExecutionResult.Succeeded("Wear apparel order issued")
+                : RimGPTCommandExecutionResult.Failure("Wear apparel order was rejected");
+        }
+
+        private static RimGPTCommandExecutionResult RemoveApparel(string pawnId, string thingId)
+        {
+            Pawn pawn;
+            RimGPTCommandExecutionResult pawnLookup = TryGetPlayerColonist(pawnId, out pawn);
+            if (!pawnLookup.Success)
+            {
+                return pawnLookup;
+            }
+
+            if (pawn.apparel == null || pawn.apparel.WornApparel == null)
+            {
+                return RimGPTCommandExecutionResult.Failure("Pawn has no apparel tracker");
+            }
+
+            Apparel apparel = null;
+            List<Apparel> worn = pawn.apparel.WornApparel;
+            for (int i = 0; i < worn.Count; i++)
+            {
+                if (worn[i] != null && worn[i].ThingID == thingId)
+                {
+                    apparel = worn[i];
+                    break;
+                }
+            }
+
+            if (apparel == null)
+            {
+                return RimGPTCommandExecutionResult.Failure("Pawn is not wearing that apparel");
+            }
+
+            Job job = JobMaker.MakeJob(JobDefOf.RemoveApparel, apparel);
+            job.playerForced = true;
+            return pawn.jobs.TryTakeOrderedJob(job, null)
+                ? RimGPTCommandExecutionResult.Succeeded("Remove apparel order issued")
+                : RimGPTCommandExecutionResult.Failure("Remove apparel order was rejected");
+        }
+
+        private static RimGPTCommandExecutionResult AssignBed(string pawnId, string bedId)
+        {
+            Pawn pawn;
+            RimGPTCommandExecutionResult pawnLookup = TryGetPlayerColonist(pawnId, out pawn);
+            if (!pawnLookup.Success)
+            {
+                return pawnLookup;
+            }
+
+            Thing thing;
+            RimGPTCommandExecutionResult bedLookup = TryGetVisibleThing(bedId, out thing);
+            if (!bedLookup.Success)
+            {
+                return bedLookup;
+            }
+
+            Building_Bed bed = thing as Building_Bed;
+            if (bed == null)
+            {
+                return RimGPTCommandExecutionResult.Failure("Thing is not a bed");
+            }
+
+            if (bed.ForPrisoners || bed.Medical)
+            {
+                return RimGPTCommandExecutionResult.Failure("Only ordinary colonist beds are supported");
+            }
+
+            if (bed.IsOwner(pawn))
+            {
+                return RimGPTCommandExecutionResult.Succeeded("Bed already assigned to pawn");
+            }
+
+            CompAssignableToPawn_Bed assignable = bed.CompAssignableToPawn as CompAssignableToPawn_Bed;
+            if (assignable == null)
+            {
+                return RimGPTCommandExecutionResult.Failure("Bed cannot be assigned");
+            }
+
+            AcceptanceReport report = assignable.CanAssignTo(pawn);
+            if (!report)
+            {
+                return RimGPTCommandExecutionResult.Failure(SafeReportReason(report, "Bed cannot be assigned to pawn"));
+            }
+
+            assignable.TryAssignPawn(pawn);
+            return RimGPTCommandExecutionResult.Succeeded("Bed assigned");
+        }
+
+        private static RimGPTCommandExecutionResult UnassignBed(string pawnId)
+        {
+            Pawn pawn;
+            RimGPTCommandExecutionResult pawnLookup = TryGetPlayerColonist(pawnId, out pawn);
+            if (!pawnLookup.Success)
+            {
+                return pawnLookup;
+            }
+
+            Building_Bed bed = pawn.ownership != null ? pawn.ownership.OwnedBed : null;
+            if (bed == null)
+            {
+                return RimGPTCommandExecutionResult.Succeeded("Pawn has no assigned bed");
+            }
+
+            CompAssignableToPawn_Bed assignable = bed.CompAssignableToPawn as CompAssignableToPawn_Bed;
+            if (assignable == null)
+            {
+                return RimGPTCommandExecutionResult.Failure("Assigned bed cannot be unassigned");
+            }
+
+            assignable.TryUnassignPawn(pawn, true, false);
+            return RimGPTCommandExecutionResult.Succeeded("Bed unassigned");
+        }
+
+        private static RimGPTCommandExecutionResult AddBill(string worktableId, string recipeDefName, string repeatModeName, bool hasTargetCount, int targetCount)
+        {
+            Thing worktable;
+            IBillGiver giver;
+            RimGPTCommandExecutionResult lookup = TryGetBillGiver(worktableId, out worktable, out giver);
+            if (!lookup.Success)
+            {
+                return lookup;
+            }
+
+            RecipeDef recipe = DefDatabase<RecipeDef>.GetNamedSilentFail(recipeDefName);
+            if (recipe == null)
+            {
+                return RimGPTCommandExecutionResult.Failure("Unknown recipeDef");
+            }
+
+            if (worktable.def == null || worktable.def.AllRecipes == null || !worktable.def.AllRecipes.Contains(recipe))
+            {
+                return RimGPTCommandExecutionResult.Failure("Recipe is not available on this worktable");
+            }
+
+            if (!recipe.AvailableOnNow(worktable))
+            {
+                return RimGPTCommandExecutionResult.Failure("Recipe is not currently available");
+            }
+
+            Bill bill = BillUtility.MakeNewBill(recipe);
+            Bill_Production production = bill as Bill_Production;
+            if (production != null)
+            {
+                RimGPTCommandExecutionResult modeResult = SetBillRepeatMode(production, repeatModeName, hasTargetCount, targetCount);
+                if (!modeResult.Success)
+                {
+                    return modeResult;
+                }
+            }
+
+            giver.BillStack.AddBill(bill);
+            string data = "{\"billId\":\"" + RimGPTJson.Escape(RimGPTOperationalJson.BillId(bill)) + "\"}";
+            return RimGPTCommandExecutionResult.Succeeded("Bill added", data);
+        }
+
+        private static RimGPTCommandExecutionResult SetBillSuspended(string worktableId, string billId, bool suspended)
+        {
+            Bill bill;
+            RimGPTCommandExecutionResult lookup = TryGetBill(worktableId, billId, out bill);
+            if (!lookup.Success)
+            {
+                return lookup;
+            }
+
+            bill.suspended = suspended;
+            return RimGPTCommandExecutionResult.Succeeded(suspended ? "Bill suspended" : "Bill unsuspended");
+        }
+
+        private static RimGPTCommandExecutionResult RemoveBill(string worktableId, string billId)
+        {
+            IBillGiver giver;
+            Bill bill;
+            RimGPTCommandExecutionResult lookup = TryGetBill(worktableId, billId, out giver, out bill);
+            if (!lookup.Success)
+            {
+                return lookup;
+            }
+
+            giver.BillStack.Delete(bill);
+            return RimGPTCommandExecutionResult.Succeeded("Bill removed");
+        }
+
+        private static RimGPTCommandExecutionResult SetBillTargetCount(string worktableId, string billId, int targetCount)
+        {
+            if (targetCount < 1 || targetCount > 10000)
+            {
+                return RimGPTCommandExecutionResult.Failure("targetCount must be between 1 and 10000");
+            }
+
+            Bill bill;
+            RimGPTCommandExecutionResult lookup = TryGetBill(worktableId, billId, out bill);
+            if (!lookup.Success)
+            {
+                return lookup;
+            }
+
+            Bill_Production production = bill as Bill_Production;
+            if (production == null)
+            {
+                return RimGPTCommandExecutionResult.Failure("Bill does not support target counts");
+            }
+
+            production.targetCount = targetCount;
+            return RimGPTCommandExecutionResult.Succeeded("Bill target count set");
+        }
+
+        private static RimGPTCommandExecutionResult SetPowerSwitch(string thingId, bool on)
+        {
+            Thing thing;
+            RimGPTCommandExecutionResult lookup = TryGetVisibleThing(thingId, out thing);
+            if (!lookup.Success)
+            {
+                return lookup;
+            }
+
+            ThingWithComps comps = thing as ThingWithComps;
+            CompFlickable flickable = comps != null ? comps.GetComp<CompFlickable>() : null;
+            if (flickable == null)
+            {
+                return RimGPTCommandExecutionResult.Failure("Thing has no player-operable power switch");
+            }
+
+            if (flickable.SwitchIsOn == on)
+            {
+                return RimGPTCommandExecutionResult.Succeeded(on ? "Switch already on" : "Switch already off");
+            }
+
+            flickable.SwitchIsOn = on;
+            return RimGPTCommandExecutionResult.Succeeded(on ? "Power switch turned on" : "Power switch turned off");
+        }
+
+        private static RimGPTCommandExecutionResult SetTargetFuelLevel(string thingId, float level)
+        {
+            Thing thing;
+            RimGPTCommandExecutionResult lookup = TryGetVisibleThing(thingId, out thing);
+            if (!lookup.Success)
+            {
+                return lookup;
+            }
+
+            ThingWithComps comps = thing as ThingWithComps;
+            CompRefuelable fuel = comps != null ? comps.GetComp<CompRefuelable>() : null;
+            if (fuel == null)
+            {
+                return RimGPTCommandExecutionResult.Failure("Thing is not refuelable");
+            }
+
+            if (!fuel.Props.targetFuelLevelConfigurable)
+            {
+                return RimGPTCommandExecutionResult.Failure("Target fuel level is not configurable for this thing");
+            }
+
+            if (level < 0f || level > fuel.Props.fuelCapacity)
+            {
+                return RimGPTCommandExecutionResult.Failure("Fuel level is outside this thing's capacity");
+            }
+
+            fuel.TargetFuelLevel = level;
+            return RimGPTCommandExecutionResult.Succeeded("Target fuel level set");
+        }
+
+        private static RimGPTCommandExecutionResult CreateAllowedArea(string label)
+        {
+            Map map;
+            RimGPTCommandExecutionResult mapResult = TryGetCurrentMap(out map);
+            if (!mapResult.Success)
+            {
+                return mapResult;
+            }
+
+            if (map.areaManager == null || !map.areaManager.CanMakeNewAllowed())
+            {
+                return RimGPTCommandExecutionResult.Failure("Cannot create another allowed area");
+            }
+
+            Area_Allowed area;
+            if (!map.areaManager.TryMakeNewAllowed(out area) || area == null)
+            {
+                return RimGPTCommandExecutionResult.Failure("Allowed area creation failed");
+            }
+
+            if (!string.IsNullOrEmpty(label))
+            {
+                area.SetLabel(label);
+            }
+
+            string data = "{\"areaId\":\"" + RimGPTJson.Escape(RimGPTOperationalJson.AreaId(area)) + "\"}";
+            return RimGPTCommandExecutionResult.Succeeded("Allowed area created", data);
+        }
+
+        private static RimGPTCommandExecutionResult SetAllowedAreaCells(string areaId, List<RimGPTCell> cells, bool allowed)
+        {
+            Area area;
+            RimGPTCommandExecutionResult lookup = TryGetAllowedArea(areaId, out area);
+            if (!lookup.Success)
+            {
+                return lookup;
+            }
+
+            if (cells == null || cells.Count == 0)
+            {
+                return RimGPTCommandExecutionResult.Failure("No cells supplied");
+            }
+
+            if (cells.Count > 400)
+            {
+                return RimGPTCommandExecutionResult.Failure("Too many cells");
+            }
+
+            Map map = Find.CurrentMap;
+            int changed = 0;
+            for (int i = 0; i < cells.Count; i++)
+            {
+                IntVec3 cell = new IntVec3(cells[i].X, 0, cells[i].Z);
+                if (!cell.InBounds(map) || cell.Fogged(map))
+                {
+                    continue;
+                }
+
+                area[cell] = allowed;
+                changed++;
+            }
+
+            string data = "{\"cellsTouched\":" + changed.ToString(CultureInfo.InvariantCulture) + "}";
+            return RimGPTCommandExecutionResult.Succeeded("Allowed area cells updated", data);
+        }
+
+        private static RimGPTCommandExecutionResult AssignAllowedArea(string pawnId, bool hasAreaId, string areaId)
+        {
+            Pawn pawn;
+            RimGPTCommandExecutionResult pawnLookup = TryGetPlayerColonist(pawnId, out pawn);
+            if (!pawnLookup.Success)
+            {
+                return pawnLookup;
+            }
+
+            if (pawn.playerSettings == null || !pawn.playerSettings.SupportsAllowedAreas)
+            {
+                return RimGPTCommandExecutionResult.Failure("Pawn does not support allowed areas");
+            }
+
+            if (!hasAreaId)
+            {
+                pawn.playerSettings.AreaRestrictionInPawnCurrentMap = null;
+                return RimGPTCommandExecutionResult.Succeeded("Pawn allowed area restriction cleared");
+            }
+
+            Area area;
+            RimGPTCommandExecutionResult areaLookup = TryGetAllowedArea(areaId, out area);
+            if (!areaLookup.Success)
+            {
+                return areaLookup;
+            }
+
+            pawn.playerSettings.AreaRestrictionInPawnCurrentMap = area;
+            return RimGPTCommandExecutionResult.Succeeded("Pawn allowed area assigned");
+        }
+
+        private static RimGPTCommandExecutionResult PrioritizeRescue(string pawnId, string targetPawnId)
+        {
+            Pawn pawn;
+            RimGPTCommandExecutionResult pawnLookup = TryGetPlayerColonist(pawnId, out pawn);
+            if (!pawnLookup.Success)
+            {
+                return pawnLookup;
+            }
+
+            Pawn target;
+            RimGPTCommandExecutionResult targetLookup = TryGetVisiblePlayerPawn(targetPawnId, out target);
+            if (!targetLookup.Success)
+            {
+                return targetLookup;
+            }
+
+            if (!target.Downed)
+            {
+                return RimGPTCommandExecutionResult.Failure("Target pawn is not downed");
+            }
+
+            if (!pawn.CanReach(target, PathEndMode.ClosestTouch, Danger.Deadly) || !pawn.CanReserve(target))
+            {
+                return RimGPTCommandExecutionResult.Failure("Pawn cannot reach or reserve rescue target");
+            }
+
+            Job job = JobMaker.MakeJob(JobDefOf.Rescue, target);
+            job.playerForced = true;
+            return pawn.jobs.TryTakeOrderedJob(job, null)
+                ? RimGPTCommandExecutionResult.Succeeded("Rescue order issued")
+                : RimGPTCommandExecutionResult.Failure("Rescue order was rejected");
+        }
+
+        private static RimGPTCommandExecutionResult PrioritizeTend(string pawnId, string targetPawnId)
+        {
+            Pawn pawn;
+            RimGPTCommandExecutionResult pawnLookup = TryGetPlayerColonist(pawnId, out pawn);
+            if (!pawnLookup.Success)
+            {
+                return pawnLookup;
+            }
+
+            Pawn target;
+            RimGPTCommandExecutionResult targetLookup = TryGetVisiblePlayerPawn(targetPawnId, out target);
+            if (!targetLookup.Success)
+            {
+                return targetLookup;
+            }
+
+            WorkGiver_TendOther_Humanlike giver = new WorkGiver_TendOther_Humanlike();
+            if (!giver.HasJobOnThing(pawn, target, true))
+            {
+                return RimGPTCommandExecutionResult.Failure("Pawn cannot tend this target now");
+            }
+
+            Job job = giver.JobOnThing(pawn, target, true);
+            if (job == null)
+            {
+                return RimGPTCommandExecutionResult.Failure("No tend job is available");
+            }
+
+            job.playerForced = true;
+            return pawn.jobs.TryTakeOrderedJob(job, null)
+                ? RimGPTCommandExecutionResult.Succeeded("Tend order issued")
+                : RimGPTCommandExecutionResult.Failure("Tend order was rejected");
+        }
+
+        private static RimGPTCommandExecutionResult PrioritizeClean(string pawnId, int x, int z)
+        {
+            Pawn pawn;
+            RimGPTCommandExecutionResult pawnLookup = TryGetPlayerColonist(pawnId, out pawn);
+            if (!pawnLookup.Success)
+            {
+                return pawnLookup;
+            }
+
+            Map map;
+            IntVec3 cell;
+            RimGPTCommandExecutionResult cellResult = TryGetVisibleCell(x, z, out map, out cell);
+            if (!cellResult.Success)
+            {
+                return cellResult;
+            }
+
+            Filth filth = cell.GetFirstThing<Filth>(map);
+            if (filth == null)
+            {
+                return RimGPTCommandExecutionResult.Failure("Cell has no visible filth to clean");
+            }
+
+            WorkGiver_CleanFilth giver = new WorkGiver_CleanFilth();
+            if (!giver.HasJobOnThing(pawn, filth, true))
+            {
+                return RimGPTCommandExecutionResult.Failure("Pawn cannot clean this target now");
+            }
+
+            Job job = giver.JobOnThing(pawn, filth, true);
+            if (job == null)
+            {
+                return RimGPTCommandExecutionResult.Failure("No clean job is available");
+            }
+
+            job.playerForced = true;
+            return pawn.jobs.TryTakeOrderedJob(job, null)
+                ? RimGPTCommandExecutionResult.Succeeded("Clean order issued")
+                : RimGPTCommandExecutionResult.Failure("Clean order was rejected");
+        }
+
+        private static RimGPTCommandExecutionResult PrioritizeRefuel(string pawnId, string thingId)
+        {
+            Pawn pawn;
+            RimGPTCommandExecutionResult pawnLookup = TryGetPlayerColonist(pawnId, out pawn);
+            if (!pawnLookup.Success)
+            {
+                return pawnLookup;
+            }
+
+            Thing thing;
+            RimGPTCommandExecutionResult thingLookup = TryGetVisibleThing(thingId, out thing);
+            if (!thingLookup.Success)
+            {
+                return thingLookup;
+            }
+
+            if (!RefuelWorkGiverUtility.CanRefuel(pawn, thing, true))
+            {
+                return RimGPTCommandExecutionResult.Failure("Pawn cannot refuel this target now");
+            }
+
+            Job job = RefuelWorkGiverUtility.RefuelJob(pawn, thing, true);
+            if (job == null)
+            {
+                return RimGPTCommandExecutionResult.Failure("No refuel job is available");
+            }
+
+            job.playerForced = true;
+            return pawn.jobs.TryTakeOrderedJob(job, null)
+                ? RimGPTCommandExecutionResult.Succeeded("Refuel order issued")
+                : RimGPTCommandExecutionResult.Failure("Refuel order was rejected");
+        }
+
+        private static RimGPTCommandExecutionResult PrioritizeConstruct(string pawnId, string blueprintOrFrameId)
+        {
+            Pawn pawn;
+            RimGPTCommandExecutionResult pawnLookup = TryGetPlayerColonist(pawnId, out pawn);
+            if (!pawnLookup.Success)
+            {
+                return pawnLookup;
+            }
+
+            Thing thing;
+            RimGPTCommandExecutionResult thingLookup = TryGetVisibleThing(blueprintOrFrameId, out thing);
+            if (!thingLookup.Success)
+            {
+                return thingLookup;
+            }
+
+            Job job = null;
+            if (thing is Frame)
+            {
+                WorkGiver_ConstructFinishFrames giver = new WorkGiver_ConstructFinishFrames();
+                if (giver.HasJobOnThing(pawn, thing, true))
+                {
+                    job = giver.JobOnThing(pawn, thing, true);
+                }
+            }
+            else if (thing is Blueprint)
+            {
+                WorkGiver_ConstructDeliverResourcesToBlueprints giver = new WorkGiver_ConstructDeliverResourcesToBlueprints();
+                if (giver.HasJobOnThing(pawn, thing, true))
+                {
+                    job = giver.JobOnThing(pawn, thing, true);
+                }
+            }
+            else
+            {
+                return RimGPTCommandExecutionResult.Failure("Target is not a blueprint or frame");
+            }
+
+            if (job == null)
+            {
+                return RimGPTCommandExecutionResult.Failure("No construction job is available for this target");
+            }
+
+            job.playerForced = true;
+            return pawn.jobs.TryTakeOrderedJob(job, null)
+                ? RimGPTCommandExecutionResult.Succeeded("Construction priority order issued")
+                : RimGPTCommandExecutionResult.Failure("Construction order was rejected");
+        }
+
         private static int AddValidZoneCells(Zone zone, Map map, int minX, int minZ, int maxX, int maxZ, RimGPTZonePlacementType type)
         {
             List<IntVec3> validCells = RimGPTZoneUtility.CollectValidCells(map, minX, minZ, maxX, maxZ, type);
@@ -969,6 +1688,158 @@ namespace RimGPT
             }
 
             return stuff;
+        }
+
+        private static RimGPTCommandExecutionResult SetBillRepeatMode(Bill_Production production, string repeatModeName, bool hasTargetCount, int targetCount)
+        {
+            string mode = string.IsNullOrEmpty(repeatModeName) ? "forever" : repeatModeName;
+            if (mode.Equals("forever", System.StringComparison.OrdinalIgnoreCase))
+            {
+                production.repeatMode = BillRepeatModeDefOf.Forever;
+                return RimGPTCommandExecutionResult.Succeeded("Repeat mode set");
+            }
+
+            if (mode.Equals("doXTimes", System.StringComparison.OrdinalIgnoreCase))
+            {
+                if (!hasTargetCount || targetCount < 1 || targetCount > 10000)
+                {
+                    return RimGPTCommandExecutionResult.Failure("doXTimes requires targetCount between 1 and 10000");
+                }
+
+                production.repeatMode = BillRepeatModeDefOf.RepeatCount;
+                production.repeatCount = targetCount;
+                return RimGPTCommandExecutionResult.Succeeded("Repeat mode set");
+            }
+
+            if (mode.Equals("untilX", System.StringComparison.OrdinalIgnoreCase))
+            {
+                if (!hasTargetCount || targetCount < 1 || targetCount > 10000)
+                {
+                    return RimGPTCommandExecutionResult.Failure("untilX requires targetCount between 1 and 10000");
+                }
+
+                production.repeatMode = BillRepeatModeDefOf.TargetCount;
+                production.targetCount = targetCount;
+                return RimGPTCommandExecutionResult.Succeeded("Repeat mode set");
+            }
+
+            return RimGPTCommandExecutionResult.Failure("Unknown repeatMode");
+        }
+
+        private static RimGPTCommandExecutionResult TryGetBillGiver(string worktableId, out Thing worktable, out IBillGiver giver)
+        {
+            worktable = null;
+            giver = null;
+
+            Thing thing;
+            RimGPTCommandExecutionResult lookup = TryGetVisibleThing(worktableId, out thing);
+            if (!lookup.Success)
+            {
+                return lookup;
+            }
+
+            giver = thing as IBillGiver;
+            if (giver == null || giver.BillStack == null)
+            {
+                return RimGPTCommandExecutionResult.Failure("Thing is not a bill-capable worktable");
+            }
+
+            worktable = thing;
+            return RimGPTCommandExecutionResult.Succeeded("Worktable found");
+        }
+
+        private static RimGPTCommandExecutionResult TryGetBill(string worktableId, string billId, out Bill bill)
+        {
+            IBillGiver giver;
+            return TryGetBill(worktableId, billId, out giver, out bill);
+        }
+
+        private static RimGPTCommandExecutionResult TryGetBill(string worktableId, string billId, out IBillGiver giver, out Bill bill)
+        {
+            giver = null;
+            bill = null;
+            if (string.IsNullOrEmpty(billId))
+            {
+                return RimGPTCommandExecutionResult.Failure("Missing billId");
+            }
+
+            Thing worktable;
+            RimGPTCommandExecutionResult lookup = TryGetBillGiver(worktableId, out worktable, out giver);
+            if (!lookup.Success)
+            {
+                return lookup;
+            }
+
+            List<Bill> bills = giver.BillStack.Bills;
+            for (int i = 0; i < bills.Count; i++)
+            {
+                Bill candidate = bills[i];
+                if (candidate != null && (candidate.GetUniqueLoadID() == billId || i.ToString(CultureInfo.InvariantCulture) == billId))
+                {
+                    bill = candidate;
+                    return RimGPTCommandExecutionResult.Succeeded("Bill found");
+                }
+            }
+
+            return RimGPTCommandExecutionResult.Failure("Bill was not found on this worktable");
+        }
+
+        private static RimGPTCommandExecutionResult TryGetAllowedArea(string areaId, out Area area)
+        {
+            area = null;
+            if (string.IsNullOrEmpty(areaId))
+            {
+                return RimGPTCommandExecutionResult.Failure("Missing areaId");
+            }
+
+            Map map;
+            RimGPTCommandExecutionResult mapResult = TryGetCurrentMap(out map);
+            if (!mapResult.Success)
+            {
+                return mapResult;
+            }
+
+            if (map.areaManager == null || map.areaManager.AllAreas == null)
+            {
+                return RimGPTCommandExecutionResult.Failure("No area manager is available");
+            }
+
+            List<Area> areas = map.areaManager.AllAreas;
+            for (int i = 0; i < areas.Count; i++)
+            {
+                Area candidate = areas[i];
+                if (candidate != null && candidate.AssignableAsAllowed() && (RimGPTOperationalJson.AreaId(candidate) == areaId || candidate.Label == areaId))
+                {
+                    area = candidate;
+                    return RimGPTCommandExecutionResult.Succeeded("Allowed area found");
+                }
+            }
+
+            return RimGPTCommandExecutionResult.Failure("Allowed area was not found on the current player map");
+        }
+
+        private static RimGPTCommandExecutionResult TryGetVisiblePlayerPawn(string pawnId, out Pawn pawn)
+        {
+            pawn = null;
+            Thing thing;
+            RimGPTCommandExecutionResult lookup = TryGetVisibleThing(pawnId, out thing);
+            if (!lookup.Success)
+            {
+                return lookup;
+            }
+
+            pawn = thing as Pawn;
+            if (pawn == null || pawn.Faction != Faction.OfPlayer)
+            {
+                return RimGPTCommandExecutionResult.Failure("Target pawn is not a player pawn");
+            }
+
+            if (pawn.Dead)
+            {
+                return RimGPTCommandExecutionResult.Failure("Target pawn is dead");
+            }
+
+            return RimGPTCommandExecutionResult.Succeeded("Target pawn found");
         }
 
         private static RimGPTCommandExecutionResult TryGetZone(string zoneId, out Zone zone)

@@ -26,7 +26,28 @@ namespace RimGPT
         PlaceBlueprint,
         PlaceBlueprints,
         CancelAt,
-        DesignateDeconstruct
+        DesignateDeconstruct,
+        EquipWeapon,
+        DropPrimaryWeapon,
+        WearApparel,
+        RemoveApparel,
+        AssignBed,
+        UnassignBed,
+        AddBill,
+        SetBillSuspended,
+        RemoveBill,
+        SetBillTargetCount,
+        SetPowerSwitch,
+        SetTargetFuelLevel,
+        CreateAllowedArea,
+        SetAllowedAreaCells,
+        AssignAllowedArea,
+        PrioritizeHaul,
+        PrioritizeRescue,
+        PrioritizeTend,
+        PrioritizeClean,
+        PrioritizeRefuel,
+        PrioritizeConstruct
     }
 
     public sealed class RimGPTCommand
@@ -57,6 +78,23 @@ namespace RimGPT
         public string StuffDef { get; set; }
         public string Rotation { get; set; }
         public System.Collections.Generic.List<RimGPTBlueprintPlacement> Placements { get; set; }
+        public string BedId { get; set; }
+        public string WorktableId { get; set; }
+        public string BillId { get; set; }
+        public string RecipeDef { get; set; }
+        public string RepeatMode { get; set; }
+        public int TargetCount { get; set; }
+        public bool HasTargetCount { get; set; }
+        public bool Suspended { get; set; }
+        public bool On { get; set; }
+        public float Level { get; set; }
+        public string Label { get; set; }
+        public string AreaId { get; set; }
+        public bool HasAreaId { get; set; }
+        public bool Allowed { get; set; }
+        public string TargetPawnId { get; set; }
+        public string BlueprintOrFrameId { get; set; }
+        public System.Collections.Generic.List<RimGPTCell> Cells { get; set; }
 
         public RimGPTCommand(string commandId, RimGPTCommandType type)
         {
@@ -120,6 +158,48 @@ namespace RimGPT
                         return "cancelAt";
                     case RimGPTCommandType.DesignateDeconstruct:
                         return "designateDeconstruct";
+                    case RimGPTCommandType.EquipWeapon:
+                        return "equipWeapon";
+                    case RimGPTCommandType.DropPrimaryWeapon:
+                        return "dropPrimaryWeapon";
+                    case RimGPTCommandType.WearApparel:
+                        return "wearApparel";
+                    case RimGPTCommandType.RemoveApparel:
+                        return "removeApparel";
+                    case RimGPTCommandType.AssignBed:
+                        return "assignBed";
+                    case RimGPTCommandType.UnassignBed:
+                        return "unassignBed";
+                    case RimGPTCommandType.AddBill:
+                        return "addBill";
+                    case RimGPTCommandType.SetBillSuspended:
+                        return "setBillSuspended";
+                    case RimGPTCommandType.RemoveBill:
+                        return "removeBill";
+                    case RimGPTCommandType.SetBillTargetCount:
+                        return "setBillTargetCount";
+                    case RimGPTCommandType.SetPowerSwitch:
+                        return "setPowerSwitch";
+                    case RimGPTCommandType.SetTargetFuelLevel:
+                        return "setTargetFuelLevel";
+                    case RimGPTCommandType.CreateAllowedArea:
+                        return "createAllowedArea";
+                    case RimGPTCommandType.SetAllowedAreaCells:
+                        return "setAllowedAreaCells";
+                    case RimGPTCommandType.AssignAllowedArea:
+                        return "assignAllowedArea";
+                    case RimGPTCommandType.PrioritizeHaul:
+                        return "prioritizeHaul";
+                    case RimGPTCommandType.PrioritizeRescue:
+                        return "prioritizeRescue";
+                    case RimGPTCommandType.PrioritizeTend:
+                        return "prioritizeTend";
+                    case RimGPTCommandType.PrioritizeClean:
+                        return "prioritizeClean";
+                    case RimGPTCommandType.PrioritizeRefuel:
+                        return "prioritizeRefuel";
+                    case RimGPTCommandType.PrioritizeConstruct:
+                        return "prioritizeConstruct";
                     default:
                         return "unknown";
                 }
@@ -134,5 +214,11 @@ namespace RimGPT
         public int Z { get; set; }
         public string Rotation { get; set; }
         public string StuffDef { get; set; }
+    }
+
+    public sealed class RimGPTCell
+    {
+        public int X { get; set; }
+        public int Z { get; set; }
     }
 }

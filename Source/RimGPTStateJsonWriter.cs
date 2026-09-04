@@ -20,6 +20,7 @@ namespace RimGPT
             WriteThreats(json, state.Threats);
             json.Append(",\"map\":").Append(string.IsNullOrEmpty(state.MapJson) ? "null" : state.MapJson);
             json.Append(",\"buildings\":").Append(string.IsNullOrEmpty(state.BuildingsJson) ? "[]" : state.BuildingsJson);
+            json.Append(",\"operations\":").Append(string.IsNullOrEmpty(state.OperationsJson) ? "{}" : state.OperationsJson);
             json.Append("}");
             return json.ToString();
         }
@@ -86,7 +87,11 @@ namespace RimGPT
                 WriteSkillsField(json, "skills", colonist.Skills, true);
                 WriteWorkField(json, "work", colonist.Work, true);
                 WriteWorkPrioritiesField(json, "workPriorities", colonist.WorkPriorities, true);
+                WriteEquipmentField(json, "primaryEquipment", colonist.PrimaryEquipment, true);
                 WriteEquipmentArrayField(json, "equipment", colonist.Equipment, true);
+                WriteApparelArrayField(json, "apparel", colonist.Apparel, true);
+                WriteBedAssignmentField(json, "assignedBed", colonist.AssignedBed, true);
+                WriteAreaAssignmentField(json, "allowedArea", colonist.AllowedArea, true);
                 json.Append("}");
             }
             json.Append("]");
@@ -421,6 +426,68 @@ namespace RimGPT
             WriteStringField(json, "id", equipment.Id, false);
             WriteStringField(json, "defName", equipment.DefName, true);
             WriteStringField(json, "label", equipment.Label, true);
+            WriteStringField(json, "quality", equipment.Quality, true);
+            WriteIntField(json, "hitPoints", equipment.HitPoints, true);
+            WriteIntField(json, "maxHitPoints", equipment.MaxHitPoints, true);
+            json.Append("}");
+        }
+
+        private static void WriteApparelArrayField(StringBuilder json, string name, List<RimGPTApparelState> apparel, bool comma)
+        {
+            WriteName(json, name, comma);
+            json.Append("[");
+            if (apparel != null)
+            {
+                for (int i = 0; i < apparel.Count; i++)
+                {
+                    if (i > 0)
+                    {
+                        json.Append(",");
+                    }
+
+                    RimGPTApparelState item = apparel[i];
+                    json.Append("{");
+                    WriteStringField(json, "id", item.Id, false);
+                    WriteStringField(json, "defName", item.DefName, true);
+                    WriteStringField(json, "label", item.Label, true);
+                    WriteStringField(json, "quality", item.Quality, true);
+                    WriteIntField(json, "hitPoints", item.HitPoints, true);
+                    WriteIntField(json, "maxHitPoints", item.MaxHitPoints, true);
+                    WriteBoolField(json, "tainted", item.Tainted, true);
+                    json.Append("}");
+                }
+            }
+            json.Append("]");
+        }
+
+        private static void WriteBedAssignmentField(StringBuilder json, string name, RimGPTBedAssignmentState bed, bool comma)
+        {
+            WriteName(json, name, comma);
+            if (bed == null)
+            {
+                json.Append("null");
+                return;
+            }
+
+            json.Append("{");
+            WriteStringField(json, "id", bed.Id, false);
+            WriteStringField(json, "defName", bed.DefName, true);
+            WritePositionField(json, "position", bed.Position, true);
+            json.Append("}");
+        }
+
+        private static void WriteAreaAssignmentField(StringBuilder json, string name, RimGPTAreaAssignmentState area, bool comma)
+        {
+            WriteName(json, name, comma);
+            if (area == null)
+            {
+                json.Append("null");
+                return;
+            }
+
+            json.Append("{");
+            WriteStringField(json, "id", area.Id, false);
+            WriteStringField(json, "label", area.Label, true);
             json.Append("}");
         }
 

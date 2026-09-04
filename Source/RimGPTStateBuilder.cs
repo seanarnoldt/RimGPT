@@ -33,6 +33,7 @@ namespace RimGPT
             state.Threats = BuildThreats(map);
             state.MapJson = RimGPTSpatialJson.BuildMapOverviewJson(map);
             state.BuildingsJson = RimGPTSpatialJson.BuildBuildingsJson(map);
+            state.OperationsJson = RimGPTOperationalJson.Build(map);
 
             return RimGPTStateJsonWriter.Write(state);
         }
@@ -111,7 +112,11 @@ namespace RimGPT
             colonist.Skills = BuildSkills(pawn);
             colonist.Work = BuildWork(pawn);
             colonist.WorkPriorities = BuildWorkPriorities(pawn);
+            colonist.PrimaryEquipment = BuildPrimaryWeapon(pawn);
             colonist.Equipment = BuildEquipment(pawn);
+            colonist.Apparel = BuildApparel(pawn);
+            colonist.AssignedBed = BuildAssignedBed(pawn);
+            colonist.AllowedArea = BuildAllowedArea(pawn);
             return colonist;
         }
 
@@ -300,10 +305,81 @@ namespace RimGPT
                 equipmentState.Id = SafeThingId(thing);
                 equipmentState.DefName = thing.def.defName;
                 equipmentState.Label = thing.LabelCap;
+                equipmentState.Quality = QualityOf(thing);
+                equipmentState.HitPoints = thing.HitPoints;
+                equipmentState.MaxHitPoints = thing.MaxHitPoints;
                 result.Add(equipmentState);
             }
 
             return result;
+        }
+
+        private static List<RimGPTApparelState> BuildApparel(Pawn pawn)
+        {
+            List<RimGPTApparelState> result = new List<RimGPTApparelState>();
+            if (pawn.apparel == null || pawn.apparel.WornApparel == null)
+            {
+                return result;
+            }
+
+            List<Apparel> worn = pawn.apparel.WornApparel;
+            for (int i = 0; i < worn.Count; i++)
+            {
+                Apparel apparel = worn[i];
+                if (apparel == null || apparel.def == null)
+                {
+                    continue;
+                }
+
+                result.Add(new RimGPTApparelState
+                {
+                    Id = SafeThingId(apparel),
+                    DefName = apparel.def.defName,
+                    Label = apparel.LabelCap,
+                    Quality = QualityOf(apparel),
+                    HitPoints = apparel.HitPoints,
+                    MaxHitPoints = apparel.MaxHitPoints,
+                    Tainted = apparel.WornByCorpse
+                });
+            }
+
+            return result;
+        }
+
+        private static RimGPTBedAssignmentState BuildAssignedBed(Pawn pawn)
+        {
+            Building_Bed bed = pawn.ownership != null ? pawn.ownership.OwnedBed : null;
+            if (bed == null || bed.def == null || !bed.Spawned || bed.Map != pawn.Map)
+            {
+                return null;
+            }
+
+            return new RimGPTBedAssignmentState
+            {
+                Id = SafeThingId(bed),
+                DefName = bed.def.defName,
+                Position = BuildPosition(bed.Position)
+            };
+        }
+
+        private static RimGPTAreaAssignmentState BuildAllowedArea(Pawn pawn)
+        {
+            if (pawn.playerSettings == null || !pawn.playerSettings.SupportsAllowedAreas)
+            {
+                return null;
+            }
+
+            Area area = pawn.playerSettings.AreaRestrictionInPawnCurrentMap;
+            if (area == null)
+            {
+                return null;
+            }
+
+            return new RimGPTAreaAssignmentState
+            {
+                Id = RimGPTOperationalJson.AreaId(area),
+                Label = area.Label
+            };
         }
 
         private static RimGPTResourcesState BuildResources(Map map)
@@ -603,7 +679,16 @@ namespace RimGPT
             result.Id = SafeThingId(weapon);
             result.DefName = weapon.def.defName;
             result.Label = weapon.LabelCap;
+            result.Quality = QualityOf(weapon);
+            result.HitPoints = weapon.HitPoints;
+            result.MaxHitPoints = weapon.MaxHitPoints;
             return result;
+        }
+
+        private static string QualityOf(Thing thing)
+        {
+            CompQuality quality = thing != null ? thing.TryGetComp<CompQuality>() : null;
+            return quality != null ? quality.Quality.ToString() : null;
         }
 
         private static RimGPTPositionState BuildPosition(IntVec3 position)

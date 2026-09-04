@@ -14,6 +14,7 @@ namespace RimGPT
         public List<RimGPTThreatState> Threats;
         public string MapJson;
         public string BuildingsJson;
+        public string OperationsJson;
     }
 
     public sealed class RimGPTSnapshotState
@@ -56,7 +57,11 @@ namespace RimGPT
         public List<RimGPTSkillState> Skills;
         public List<RimGPTWorkState> Work;
         public List<RimGPTWorkPriorityState> WorkPriorities;
+        public RimGPTEquipmentState PrimaryEquipment;
         public List<RimGPTEquipmentState> Equipment;
+        public List<RimGPTApparelState> Apparel;
+        public RimGPTBedAssignmentState AssignedBed;
+        public RimGPTAreaAssignmentState AllowedArea;
     }
 
     public sealed class RimGPTPositionState
@@ -123,6 +128,33 @@ namespace RimGPT
     {
         public string Id;
         public string DefName;
+        public string Label;
+        public string Quality;
+        public int HitPoints;
+        public int MaxHitPoints;
+    }
+
+    public sealed class RimGPTApparelState
+    {
+        public string Id;
+        public string DefName;
+        public string Label;
+        public string Quality;
+        public int HitPoints;
+        public int MaxHitPoints;
+        public bool Tainted;
+    }
+
+    public sealed class RimGPTBedAssignmentState
+    {
+        public string Id;
+        public string DefName;
+        public RimGPTPositionState Position;
+    }
+
+    public sealed class RimGPTAreaAssignmentState
+    {
+        public string Id;
         public string Label;
     }
 

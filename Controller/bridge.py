@@ -88,6 +88,9 @@ class RimWorldBridge:
     def list_growable_plants(self) -> dict[str, Any]:
         return self._request_json("GET", "/growable-plants")
 
+    def list_recipes(self, worktable_id: str) -> dict[str, Any]:
+        return self._request_json("GET", "/recipes", params={"worktableId": worktable_id})
+
     def send_command(self, command: dict[str, Any]) -> dict[str, Any]:
         return self._request_json("POST", "/command", json=command)
 

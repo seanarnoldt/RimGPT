@@ -514,6 +514,190 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 
+TOOLS.extend(
+    [
+        {
+            "type": "function",
+            "name": "list_recipes",
+            "description": "Read-only list of recipes currently available for a specific visible bill-capable worktable ID from operations.worktables.",
+            "strict": True,
+            "parameters": {
+                "type": "object",
+                "properties": {"worktable_id": {"type": "string"}},
+                "required": ["worktable_id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "equip_weapon",
+            "description": "Order a player colonist to equip a visible available weapon by ThingID using normal RimWorld equip job behavior.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"pawn_id": {"type": "string"}, "thing_id": {"type": "string"}}, "required": ["pawn_id", "thing_id"], "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "drop_primary_weapon",
+            "description": "Order a player colonist to drop their current primary weapon using normal RimWorld job behavior. Idempotent if none is equipped.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"pawn_id": {"type": "string"}}, "required": ["pawn_id"], "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "wear_apparel",
+            "description": "Order a player colonist to wear visible available apparel by ThingID using normal RimWorld wear job behavior.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"pawn_id": {"type": "string"}, "thing_id": {"type": "string"}}, "required": ["pawn_id", "thing_id"], "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "remove_apparel",
+            "description": "Order a player colonist to remove a currently worn apparel ThingID using normal RimWorld remove-apparel job behavior.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"pawn_id": {"type": "string"}, "thing_id": {"type": "string"}}, "required": ["pawn_id", "thing_id"], "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "assign_bed",
+            "description": "Assign an ordinary colonist bed to a player colonist. Prisoner and medical beds are intentionally unsupported.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"pawn_id": {"type": "string"}, "bed_id": {"type": "string"}}, "required": ["pawn_id", "bed_id"], "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "unassign_bed",
+            "description": "Remove a player colonist's current bed assignment. Idempotent if no bed is assigned.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"pawn_id": {"type": "string"}}, "required": ["pawn_id"], "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "add_bill",
+            "description": "Add a production bill to a visible bill-capable worktable. repeat_mode is forever, doXTimes, or untilX; doXTimes/untilX require target_count.",
+            "strict": True,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "worktable_id": {"type": "string"},
+                    "recipe_def": {"type": "string"},
+                    "repeat_mode": {"type": "string", "enum": ["forever", "doXTimes", "untilX"]},
+                    "target_count": {"type": ["integer", "null"]},
+                },
+                "required": ["worktable_id", "recipe_def", "repeat_mode", "target_count"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "set_bill_suspended",
+            "description": "Suspend or unsuspend an existing worktable bill by bill ID.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"worktable_id": {"type": "string"}, "bill_id": {"type": "string"}, "suspended": {"type": "boolean"}}, "required": ["worktable_id", "bill_id", "suspended"], "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "remove_bill",
+            "description": "Remove an existing worktable bill by bill ID.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"worktable_id": {"type": "string"}, "bill_id": {"type": "string"}}, "required": ["worktable_id", "bill_id"], "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "set_bill_target_count",
+            "description": "Set the target count for a production bill that supports target counts.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"worktable_id": {"type": "string"}, "bill_id": {"type": "string"}, "target_count": {"type": "integer"}}, "required": ["worktable_id", "bill_id", "target_count"], "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "set_power_switch",
+            "description": "Toggle a visible structure that has an ordinary player-operable power switch. Does not fake power connections.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"thing_id": {"type": "string"}, "on": {"type": "boolean"}}, "required": ["thing_id", "on"], "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "set_target_fuel_level",
+            "description": "Set target fuel level for a visible refuelable building when RimWorld exposes that setting.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"thing_id": {"type": "string"}, "level": {"type": "number"}}, "required": ["thing_id", "level"], "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "create_allowed_area",
+            "description": "Create a player allowed area and return its area ID.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"label": {"type": ["string", "null"]}}, "required": ["label"], "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "set_allowed_area_cells",
+            "description": "Set up to 400 visible current-map cells allowed or disallowed in an existing allowed area.",
+            "strict": True,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "area_id": {"type": "string"},
+                    "cells": {"type": "array", "maxItems": 400, "items": {"type": "object", "properties": {"x": {"type": "integer"}, "z": {"type": "integer"}}, "required": ["x", "z"], "additionalProperties": False}},
+                    "allowed": {"type": "boolean"},
+                },
+                "required": ["area_id", "cells", "allowed"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "assign_allowed_area",
+            "description": "Assign a player colonist to an allowed area by area ID, or pass null to make the pawn unrestricted.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"pawn_id": {"type": "string"}, "area_id": {"type": ["string", "null"]}}, "required": ["pawn_id", "area_id"], "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "prioritize_haul",
+            "description": "Order a player colonist to prioritize hauling a visible allowed haulable ThingID using normal RimWorld hauling behavior.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"pawn_id": {"type": "string"}, "thing_id": {"type": "string"}}, "required": ["pawn_id", "thing_id"], "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "prioritize_rescue",
+            "description": "Order a player colonist to rescue a visible downed player pawn using normal rescue job behavior.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"pawn_id": {"type": "string"}, "target_pawn_id": {"type": "string"}}, "required": ["pawn_id", "target_pawn_id"], "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "prioritize_tend",
+            "description": "Order a player colonist to tend a visible injured player pawn when a normal tend job is currently available.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"pawn_id": {"type": "string"}, "target_pawn_id": {"type": "string"}}, "required": ["pawn_id", "target_pawn_id"], "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "prioritize_clean",
+            "description": "Order a player colonist to clean visible filth at current-map RimWorld x/z coordinates.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"pawn_id": {"type": "string"}, "x": {"type": "integer"}, "z": {"type": "integer"}}, "required": ["pawn_id", "x", "z"], "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "prioritize_refuel",
+            "description": "Order a player colonist to refuel a visible refuelable building using normal RimWorld refuel job behavior.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"pawn_id": {"type": "string"}, "thing_id": {"type": "string"}}, "required": ["pawn_id", "thing_id"], "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "prioritize_construct",
+            "description": "Order a player colonist to prioritize a visible construction blueprint or frame by ThingID using normal construction job behavior.",
+            "strict": True,
+            "parameters": {"type": "object", "properties": {"pawn_id": {"type": "string"}, "blueprint_or_frame_id": {"type": "string"}}, "required": ["pawn_id", "blueprint_or_frame_id"], "additionalProperties": False},
+        },
+    ]
+)
+
+
 READ_ONLY_TOOLS = {
     "inspect_map",
     "list_build_options",
@@ -521,6 +705,7 @@ READ_ONLY_TOOLS = {
     "list_growable_plants",
     "check_build_placements",
     "check_zone_placement",
+    "list_recipes",
 }
 
 
@@ -627,4 +812,81 @@ def tool_call_to_bridge_command(name: str, arguments: dict[str, Any]) -> dict[st
         return {"command": "cancelAt", "x": arguments["x"], "z": arguments["z"]}
     if name == "designate_deconstruct":
         return {"command": "designateDeconstruct", "thingId": arguments["thing_id"]}
+    if name == "equip_weapon":
+        return {"command": "equipWeapon", "pawnId": arguments["pawn_id"], "thingId": arguments["thing_id"]}
+    if name == "drop_primary_weapon":
+        return {"command": "dropPrimaryWeapon", "pawnId": arguments["pawn_id"]}
+    if name == "wear_apparel":
+        return {"command": "wearApparel", "pawnId": arguments["pawn_id"], "thingId": arguments["thing_id"]}
+    if name == "remove_apparel":
+        return {"command": "removeApparel", "pawnId": arguments["pawn_id"], "thingId": arguments["thing_id"]}
+    if name == "assign_bed":
+        return {"command": "assignBed", "pawnId": arguments["pawn_id"], "bedId": arguments["bed_id"]}
+    if name == "unassign_bed":
+        return {"command": "unassignBed", "pawnId": arguments["pawn_id"]}
+    if name == "add_bill":
+        command = {
+            "command": "addBill",
+            "worktableId": arguments["worktable_id"],
+            "recipeDef": arguments["recipe_def"],
+            "repeatMode": arguments["repeat_mode"],
+        }
+        if arguments.get("target_count") is not None:
+            command["targetCount"] = arguments["target_count"]
+        return command
+    if name == "set_bill_suspended":
+        return {
+            "command": "setBillSuspended",
+            "worktableId": arguments["worktable_id"],
+            "billId": arguments["bill_id"],
+            "suspended": arguments["suspended"],
+        }
+    if name == "remove_bill":
+        return {"command": "removeBill", "worktableId": arguments["worktable_id"], "billId": arguments["bill_id"]}
+    if name == "set_bill_target_count":
+        return {
+            "command": "setBillTargetCount",
+            "worktableId": arguments["worktable_id"],
+            "billId": arguments["bill_id"],
+            "targetCount": arguments["target_count"],
+        }
+    if name == "set_power_switch":
+        return {"command": "setPowerSwitch", "thingId": arguments["thing_id"], "on": arguments["on"]}
+    if name == "set_target_fuel_level":
+        return {"command": "setTargetFuelLevel", "thingId": arguments["thing_id"], "level": arguments["level"]}
+    if name == "create_allowed_area":
+        return {"command": "createAllowedArea", "label": arguments.get("label")}
+    if name == "set_allowed_area_cells":
+        return {
+            "command": "setAllowedAreaCells",
+            "areaId": arguments["area_id"],
+            "cells": arguments["cells"],
+            "allowed": arguments["allowed"],
+        }
+    if name == "assign_allowed_area":
+        return {"command": "assignAllowedArea", "pawnId": arguments["pawn_id"], "areaId": arguments.get("area_id")}
+    if name == "prioritize_haul":
+        return {"command": "prioritizeHaul", "pawnId": arguments["pawn_id"], "thingId": arguments["thing_id"]}
+    if name == "prioritize_rescue":
+        return {
+            "command": "prioritizeRescue",
+            "pawnId": arguments["pawn_id"],
+            "targetPawnId": arguments["target_pawn_id"],
+        }
+    if name == "prioritize_tend":
+        return {
+            "command": "prioritizeTend",
+            "pawnId": arguments["pawn_id"],
+            "targetPawnId": arguments["target_pawn_id"],
+        }
+    if name == "prioritize_clean":
+        return {"command": "prioritizeClean", "pawnId": arguments["pawn_id"], "x": arguments["x"], "z": arguments["z"]}
+    if name == "prioritize_refuel":
+        return {"command": "prioritizeRefuel", "pawnId": arguments["pawn_id"], "thingId": arguments["thing_id"]}
+    if name == "prioritize_construct":
+        return {
+            "command": "prioritizeConstruct",
+            "pawnId": arguments["pawn_id"],
+            "blueprintOrFrameId": arguments["blueprint_or_frame_id"],
+        }
     raise ValueError(f"Unsupported tool call: {name}")

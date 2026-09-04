@@ -70,6 +70,9 @@ namespace RimGPT
                         case RimGPTReadRequestType.CheckZonePlacement:
                             json = RimGPTSpatialJson.BuildCheckZonePlacementJson(request.ZoneType, request.MinX, request.MinZ, request.MaxX, request.MaxZ);
                             break;
+                        case RimGPTReadRequestType.Recipes:
+                            json = RimGPTOperationalJson.BuildRecipesJson(request.WorktableId);
+                            break;
                         default:
                             RimGPTReadRequestQueue.CompleteFailure(request, "unsupportedReadRequest");
                             continue;

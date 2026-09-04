@@ -176,6 +176,12 @@ namespace RimGPT
                     return;
                 }
 
+                if (method == "GET" && path == "/recipes")
+                {
+                    HandleRecipes(context);
+                    return;
+                }
+
                 if (method == "POST" && path == "/command")
                 {
                     HandleCommand(context);
@@ -344,6 +350,25 @@ namespace RimGPT
             RimGPTReadRequest request = new RimGPTReadRequest
             {
                 Type = RimGPTReadRequestType.GrowablePlants
+            };
+            int statusCode;
+            string json = RimGPTReadRequestQueue.EnqueueAndWait(request, out statusCode);
+            WriteJson(context.Response, statusCode, json);
+        }
+
+        private static void HandleRecipes(HttpListenerContext context)
+        {
+            string worktableId = context.Request.QueryString["worktableId"];
+            if (string.IsNullOrEmpty(worktableId))
+            {
+                WriteJson(context.Response, 400, "{\"error\":\"missingWorktableId\"}");
+                return;
+            }
+
+            RimGPTReadRequest request = new RimGPTReadRequest
+            {
+                Type = RimGPTReadRequestType.Recipes,
+                WorktableId = worktableId
             };
             int statusCode;
             string json = RimGPTReadRequestQueue.EnqueueAndWait(request, out statusCode);
@@ -879,6 +904,335 @@ namespace RimGPT
                 return true;
             }
 
+            if (string.Equals(commandName, "equipWeapon", StringComparison.OrdinalIgnoreCase))
+            {
+                string pawnId;
+                string thingId;
+                if (!TryReadString(body, "pawnId", out pawnId) || !TryReadString(body, "thingId", out thingId))
+                {
+                    error = "missingPawnOrThingId";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.EquipWeapon);
+                command.PawnId = pawnId;
+                command.ThingId = thingId;
+                return true;
+            }
+
+            if (string.Equals(commandName, "dropPrimaryWeapon", StringComparison.OrdinalIgnoreCase))
+            {
+                string pawnId;
+                if (!TryReadString(body, "pawnId", out pawnId))
+                {
+                    error = "missingPawnId";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.DropPrimaryWeapon);
+                command.PawnId = pawnId;
+                return true;
+            }
+
+            if (string.Equals(commandName, "wearApparel", StringComparison.OrdinalIgnoreCase) || string.Equals(commandName, "removeApparel", StringComparison.OrdinalIgnoreCase))
+            {
+                string pawnId;
+                string thingId;
+                if (!TryReadString(body, "pawnId", out pawnId) || !TryReadString(body, "thingId", out thingId))
+                {
+                    error = "missingPawnOrThingId";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, string.Equals(commandName, "wearApparel", StringComparison.OrdinalIgnoreCase) ? RimGPTCommandType.WearApparel : RimGPTCommandType.RemoveApparel);
+                command.PawnId = pawnId;
+                command.ThingId = thingId;
+                return true;
+            }
+
+            if (string.Equals(commandName, "assignBed", StringComparison.OrdinalIgnoreCase))
+            {
+                string pawnId;
+                string bedId;
+                if (!TryReadString(body, "pawnId", out pawnId) || !TryReadString(body, "bedId", out bedId))
+                {
+                    error = "missingPawnOrBedId";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.AssignBed);
+                command.PawnId = pawnId;
+                command.BedId = bedId;
+                return true;
+            }
+
+            if (string.Equals(commandName, "unassignBed", StringComparison.OrdinalIgnoreCase))
+            {
+                string pawnId;
+                if (!TryReadString(body, "pawnId", out pawnId))
+                {
+                    error = "missingPawnId";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.UnassignBed);
+                command.PawnId = pawnId;
+                return true;
+            }
+
+            if (string.Equals(commandName, "addBill", StringComparison.OrdinalIgnoreCase))
+            {
+                string worktableId;
+                string recipeDef;
+                string repeatMode;
+                if (!TryReadString(body, "worktableId", out worktableId)
+                    || !TryReadString(body, "recipeDef", out recipeDef)
+                    || !TryReadString(body, "repeatMode", out repeatMode))
+                {
+                    error = "missingBillParameters";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.AddBill);
+                command.WorktableId = worktableId;
+                command.RecipeDef = recipeDef;
+                command.RepeatMode = repeatMode;
+                int targetCount;
+                if (TryReadOptionalInt(body, "targetCount", out targetCount))
+                {
+                    if (targetCount < 1 || targetCount > 10000)
+                    {
+                        error = "invalidTargetCount";
+                        return false;
+                    }
+
+                    command.HasTargetCount = true;
+                    command.TargetCount = targetCount;
+                }
+                return true;
+            }
+
+            if (string.Equals(commandName, "setBillSuspended", StringComparison.OrdinalIgnoreCase))
+            {
+                string worktableId;
+                string billId;
+                bool suspended;
+                if (!TryReadString(body, "worktableId", out worktableId) || !TryReadString(body, "billId", out billId) || !TryReadBool(body, "suspended", out suspended))
+                {
+                    error = "missingBillSuspendedParameters";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.SetBillSuspended);
+                command.WorktableId = worktableId;
+                command.BillId = billId;
+                command.Suspended = suspended;
+                return true;
+            }
+
+            if (string.Equals(commandName, "removeBill", StringComparison.OrdinalIgnoreCase))
+            {
+                string worktableId;
+                string billId;
+                if (!TryReadString(body, "worktableId", out worktableId) || !TryReadString(body, "billId", out billId))
+                {
+                    error = "missingBillParameters";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.RemoveBill);
+                command.WorktableId = worktableId;
+                command.BillId = billId;
+                return true;
+            }
+
+            if (string.Equals(commandName, "setBillTargetCount", StringComparison.OrdinalIgnoreCase))
+            {
+                string worktableId;
+                string billId;
+                int targetCount;
+                if (!TryReadString(body, "worktableId", out worktableId) || !TryReadString(body, "billId", out billId) || !TryReadInt(body, "targetCount", out targetCount))
+                {
+                    error = "missingBillTargetCountParameters";
+                    return false;
+                }
+
+                if (targetCount < 1 || targetCount > 10000)
+                {
+                    error = "invalidTargetCount";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.SetBillTargetCount);
+                command.WorktableId = worktableId;
+                command.BillId = billId;
+                command.TargetCount = targetCount;
+                return true;
+            }
+
+            if (string.Equals(commandName, "setPowerSwitch", StringComparison.OrdinalIgnoreCase))
+            {
+                string thingId;
+                bool on;
+                if (!TryReadString(body, "thingId", out thingId) || !TryReadBool(body, "on", out on))
+                {
+                    error = "missingPowerSwitchParameters";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.SetPowerSwitch);
+                command.ThingId = thingId;
+                command.On = on;
+                return true;
+            }
+
+            if (string.Equals(commandName, "setTargetFuelLevel", StringComparison.OrdinalIgnoreCase))
+            {
+                string thingId;
+                float level;
+                if (!TryReadString(body, "thingId", out thingId) || !TryReadFloat(body, "level", out level))
+                {
+                    error = "missingFuelParameters";
+                    return false;
+                }
+
+                if (level < 0f)
+                {
+                    error = "invalidFuelLevel";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.SetTargetFuelLevel);
+                command.ThingId = thingId;
+                command.Level = level;
+                return true;
+            }
+
+            if (string.Equals(commandName, "createAllowedArea", StringComparison.OrdinalIgnoreCase))
+            {
+                string label;
+                TryReadString(body, "label", out label);
+                command = new RimGPTCommand(commandId, RimGPTCommandType.CreateAllowedArea);
+                command.Label = label;
+                return true;
+            }
+
+            if (string.Equals(commandName, "setAllowedAreaCells", StringComparison.OrdinalIgnoreCase))
+            {
+                string areaId;
+                bool allowed;
+                System.Collections.Generic.List<RimGPTCell> cells;
+                if (!TryReadString(body, "areaId", out areaId) || !TryReadBool(body, "allowed", out allowed) || !TryReadCells(body, out cells))
+                {
+                    error = "missingAllowedAreaCellsParameters";
+                    return false;
+                }
+
+                if (cells.Count > 400)
+                {
+                    error = "tooManyCells";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.SetAllowedAreaCells);
+                command.AreaId = areaId;
+                command.Allowed = allowed;
+                command.Cells = cells;
+                return true;
+            }
+
+            if (string.Equals(commandName, "assignAllowedArea", StringComparison.OrdinalIgnoreCase))
+            {
+                string pawnId;
+                if (!TryReadString(body, "pawnId", out pawnId))
+                {
+                    error = "missingPawnId";
+                    return false;
+                }
+
+                string areaId;
+                command = new RimGPTCommand(commandId, RimGPTCommandType.AssignAllowedArea);
+                command.PawnId = pawnId;
+                if (TryReadString(body, "areaId", out areaId))
+                {
+                    command.HasAreaId = true;
+                    command.AreaId = areaId;
+                }
+                else
+                {
+                    command.HasAreaId = false;
+                }
+                return true;
+            }
+
+            if (string.Equals(commandName, "prioritizeHaul", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(commandName, "prioritizeRefuel", StringComparison.OrdinalIgnoreCase))
+            {
+                string pawnId;
+                string thingId;
+                if (!TryReadString(body, "pawnId", out pawnId) || !TryReadString(body, "thingId", out thingId))
+                {
+                    error = "missingPawnOrThingId";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, string.Equals(commandName, "prioritizeHaul", StringComparison.OrdinalIgnoreCase) ? RimGPTCommandType.PrioritizeHaul : RimGPTCommandType.PrioritizeRefuel);
+                command.PawnId = pawnId;
+                command.ThingId = thingId;
+                return true;
+            }
+
+            if (string.Equals(commandName, "prioritizeRescue", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(commandName, "prioritizeTend", StringComparison.OrdinalIgnoreCase))
+            {
+                string pawnId;
+                string targetPawnId;
+                if (!TryReadString(body, "pawnId", out pawnId) || !TryReadString(body, "targetPawnId", out targetPawnId))
+                {
+                    error = "missingPawnOrTargetPawnId";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, string.Equals(commandName, "prioritizeRescue", StringComparison.OrdinalIgnoreCase) ? RimGPTCommandType.PrioritizeRescue : RimGPTCommandType.PrioritizeTend);
+                command.PawnId = pawnId;
+                command.TargetPawnId = targetPawnId;
+                return true;
+            }
+
+            if (string.Equals(commandName, "prioritizeClean", StringComparison.OrdinalIgnoreCase))
+            {
+                string pawnId;
+                int x;
+                int z;
+                if (!TryReadString(body, "pawnId", out pawnId) || !TryReadInt(body, "x", out x) || !TryReadInt(body, "z", out z))
+                {
+                    error = "missingCleanParameters";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.PrioritizeClean);
+                command.PawnId = pawnId;
+                command.X = x;
+                command.Z = z;
+                return true;
+            }
+
+            if (string.Equals(commandName, "prioritizeConstruct", StringComparison.OrdinalIgnoreCase))
+            {
+                string pawnId;
+                string targetId;
+                if (!TryReadString(body, "pawnId", out pawnId) || !TryReadString(body, "blueprintOrFrameId", out targetId))
+                {
+                    error = "missingConstructParameters";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.PrioritizeConstruct);
+                command.PawnId = pawnId;
+                command.BlueprintOrFrameId = targetId;
+                return true;
+            }
+
             error = "unsupportedCommand";
             return false;
         }
@@ -1024,6 +1378,65 @@ namespace RimGPT
 
             string raw = match.Groups["value"].Value;
             return !raw.Equals("null", StringComparison.OrdinalIgnoreCase) && int.TryParse(raw, out value);
+        }
+
+        private static bool TryReadBool(string body, string fieldName, out bool value)
+        {
+            value = false;
+            if (string.IsNullOrEmpty(body))
+            {
+                return false;
+            }
+
+            Match match = Regex.Match(body, "\"" + Regex.Escape(fieldName) + "\"\\s*:\\s*(?<value>true|false)", RegexOptions.IgnoreCase);
+            if (!match.Success)
+            {
+                return false;
+            }
+
+            return bool.TryParse(match.Groups["value"].Value, out value);
+        }
+
+        private static bool TryReadFloat(string body, string fieldName, out float value)
+        {
+            value = 0f;
+            if (string.IsNullOrEmpty(body))
+            {
+                return false;
+            }
+
+            Match match = Regex.Match(body, "\"" + Regex.Escape(fieldName) + "\"\\s*:\\s*(?<value>-?\\d+(?:\\.\\d+)?)");
+            if (!match.Success)
+            {
+                return false;
+            }
+
+            return float.TryParse(match.Groups["value"].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value);
+        }
+
+        private static bool TryReadCells(string body, out System.Collections.Generic.List<RimGPTCell> cells)
+        {
+            cells = new System.Collections.Generic.List<RimGPTCell>();
+            Match arrayMatch = Regex.Match(body, "\"cells\"\\s*:\\s*\\[(?<items>.*)\\]", RegexOptions.Singleline);
+            if (!arrayMatch.Success)
+            {
+                return false;
+            }
+
+            MatchCollection objectMatches = Regex.Matches(arrayMatch.Groups["items"].Value, "\\{[^{}]*\\}");
+            for (int i = 0; i < objectMatches.Count; i++)
+            {
+                int x;
+                int z;
+                if (!TryReadInt(objectMatches[i].Value, "x", out x) || !TryReadInt(objectMatches[i].Value, "z", out z))
+                {
+                    return false;
+                }
+
+                cells.Add(new RimGPTCell { X = x, Z = z });
+            }
+
+            return cells.Count > 0;
         }
 
         private static bool TryReadQueryInt(HttpListenerContext context, string fieldName, out int value)
