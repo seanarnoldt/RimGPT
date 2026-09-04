@@ -4,7 +4,7 @@ from typing import Any
 
 from openai import OpenAI
 
-from bridge import CommandStatusTimeout, CommandStatusUnreachable, RimWorldBridge, RimWorldBridgeError
+from bridge import CommandStatusUnreachable, RimWorldBridge, RimWorldBridgeError
 from tools import TOOLS, tool_call_to_bridge_command
 
 
@@ -92,10 +92,7 @@ class AgentController:
                 return current
 
             print(f"[MODEL] Tool-call round {round_index + 1}: {len(tool_calls)} call(s)")
-            outputs: list[dict[str, Any]] = []
-            for call in tool_calls:
-                outputs.append(self._execute_tool_call(call))
-
+            outputs = self._execute_tool_call_batch(tool_calls)
             outputs.extend(self._reconcile_uncertain_commands())
             post_action_state = self._fresh_state_message()
 
@@ -112,84 +109,131 @@ class AgentController:
         print("[ERROR] Reached max tool-call rounds; stopping to avoid an infinite loop")
         return current
 
-    def _execute_tool_call(self, call: Any) -> dict[str, Any]:
-        name = getattr(call, "name", "")
-        call_id = getattr(call, "call_id", "")
-        raw_arguments = getattr(call, "arguments", "{}")
+    def _execute_tool_call_batch(self, tool_calls: list[Any]) -> list[dict[str, Any]]:
+        prepared: list[dict[str, Any]] = []
+        outputs: list[dict[str, Any] | None] = [None] * len(tool_calls)
 
-        try:
-            arguments = json.loads(raw_arguments)
-        except json.JSONDecodeError as exc:
-            result = {"success": False, "error": f"Invalid tool arguments JSON: {exc}"}
-            print(f"[ERROR] {name}: {result['error']}")
-            return function_output(call_id, result)
+        for index, call in enumerate(tool_calls):
+            name = getattr(call, "name", "")
+            call_id = getattr(call, "call_id", "")
+            raw_arguments = getattr(call, "arguments", "{}")
 
-        print(f"[ACTION] {name}({format_arguments(arguments)})")
+            try:
+                arguments = json.loads(raw_arguments)
+            except json.JSONDecodeError as exc:
+                result = {"success": False, "error": f"Invalid tool arguments JSON: {exc}"}
+                print(f"[ERROR] {name}: {result['error']}")
+                outputs[index] = function_output(call_id, result)
+                continue
 
-        try:
-            bridge_command = tool_call_to_bridge_command(name, arguments)
-        except Exception as exc:
-            result = {"success": False, "error": str(exc)}
-            print(f"[ERROR] {name}: {result['error']}")
-            return function_output(call_id, result)
+            print(f"[ACTION] {name}({format_arguments(arguments)})")
 
-        if self.dry_run:
-            result = {
-                "success": True,
-                "dryRun": True,
-                "message": "Command was proposed but not executed because --dry-run is active.",
-                "command": bridge_command,
-            }
-            print(f"[RESULT] dry-run proposed {bridge_command}")
-            return function_output(call_id, result)
+            try:
+                bridge_command = tool_call_to_bridge_command(name, arguments)
+            except Exception as exc:
+                result = {"success": False, "error": str(exc)}
+                print(f"[ERROR] {name}: {result['error']}")
+                outputs[index] = function_output(call_id, result)
+                continue
 
-        started = time.monotonic()
-        try:
-            result = self.bridge.send_command_and_wait(bridge_command)
-            elapsed = result.get("elapsedSeconds", round(time.monotonic() - started, 3))
-            print(f"[RESULT] completed in {elapsed:.2f}s: {result}")
-            return function_output(call_id, result)
-        except CommandStatusTimeout as exc:
-            command_id = exc.command_id
-            self.uncertain_commands[command_id] = {
-                "call_id": call_id,
-                "command": bridge_command,
-                "started_at": started,
-                "reason": "still-queued",
-            }
-            result = {
-                "commandId": command_id,
-                "status": "queued",
-                "success": None,
-                "uncertain": True,
-                "message": f"Command is still queued after {exc.elapsed:.2f}s and will be reconciled later.",
-                "command": bridge_command,
-            }
-            print(f"[WARNING] command still queued after {exc.elapsed:.1f}s: {command_id}")
-            return function_output(call_id, result)
-        except CommandStatusUnreachable as exc:
-            command_id = exc.command_id
-            self.uncertain_commands[command_id] = {
-                "call_id": call_id,
-                "command": bridge_command,
-                "started_at": started,
-                "reason": "unknown-unreachable",
-            }
-            result = {
-                "commandId": command_id,
-                "status": "unknown",
-                "success": None,
-                "uncertain": True,
-                "error": exc.error,
-                "message": "Command was accepted, but status could not be verified. It will be reconciled later.",
-                "command": bridge_command,
-            }
-            print(f"[WARNING] command status unknown/unreachable after {exc.elapsed:.1f}s: {command_id}")
-            return function_output(call_id, result)
-        except RimWorldBridgeError as exc:
-            result = {"success": False, "error": str(exc), "command": bridge_command}
-            print(f"[ERROR] {exc}")
-            return function_output(call_id, result)
+            if self.dry_run:
+                result = {
+                    "success": True,
+                    "dryRun": True,
+                    "message": "Command was proposed but not executed because --dry-run is active.",
+                    "command": bridge_command,
+                }
+                print(f"[RESULT] dry-run proposed {bridge_command}")
+                outputs[index] = function_output(call_id, result)
+                continue
+
+            prepared.append(
+                {
+                    "index": index,
+                    "call_id": call_id,
+                    "name": name,
+                    "command": bridge_command,
+                }
+            )
+
+        if prepared:
+            submitted: list[dict[str, Any]] = []
+            by_command_id: dict[str, dict[str, Any]] = {}
+
+            for item in prepared:
+                try:
+                    submission = self.bridge.submit_command(item["command"])
+                    command_id = str(submission["commandId"])
+                    item["command_id"] = command_id
+                    item["started_at"] = submission["startedAt"]
+                    submitted.append(submission)
+                    by_command_id[command_id] = item
+                    print(
+                        f"[ACTION] submitted {item['name']} commandId={command_id} "
+                        f"in {submission.get('submitElapsedSeconds', 0.0):.2f}s"
+                    )
+                except CommandStatusUnreachable as exc:
+                    result = {
+                        "commandId": exc.command_id,
+                        "status": "unknown",
+                        "success": None,
+                        "uncertain": True,
+                        "error": exc.error,
+                        "message": "Command submission status could not be verified. It will be reconciled later.",
+                        "command": item["command"],
+                    }
+                    self.uncertain_commands[exc.command_id] = {
+                        "call_id": item["call_id"],
+                        "command": item["command"],
+                        "started_at": time.monotonic() - exc.elapsed,
+                        "reason": "unknown-unreachable",
+                    }
+                    print(f"[WARNING] command status unknown/unreachable after {exc.elapsed:.1f}s: {exc.command_id}")
+                    outputs[item["index"]] = function_output(item["call_id"], result)
+                except RimWorldBridgeError as exc:
+                    result = {"success": False, "error": str(exc), "command": item["command"]}
+                    print(f"[ERROR] {exc}")
+                    outputs[item["index"]] = function_output(item["call_id"], result)
+
+            if submitted:
+                results = self.bridge.wait_for_commands(submitted)
+                for submission in submitted:
+                    command_id = str(submission["commandId"])
+                    item = by_command_id[command_id]
+                    result = results.get(command_id)
+                    if result is None:
+                        result = {
+                            "commandId": command_id,
+                            "status": "unknown",
+                            "success": None,
+                            "uncertain": True,
+                            "error": "No command status was returned by batch wait",
+                        }
+
+                    result["command"] = item["command"]
+                    elapsed = float(result.get("elapsedSeconds", 0.0))
+                    if result.get("status") == "completed":
+                        print(f"[RESULT] {command_id} completed in {elapsed:.2f}s: {result}")
+                    elif result.get("status") == "queued":
+                        self.uncertain_commands[command_id] = {
+                            "call_id": item["call_id"],
+                            "command": item["command"],
+                            "started_at": item["started_at"],
+                            "reason": "still-queued",
+                        }
+                        print(f"[WARNING] command still queued after {elapsed:.1f}s: {command_id}")
+                    else:
+                        self.uncertain_commands[command_id] = {
+                            "call_id": item["call_id"],
+                            "command": item["command"],
+                            "started_at": item["started_at"],
+                            "reason": "unknown-unreachable",
+                        }
+                        print(f"[WARNING] command status unknown/unreachable after {elapsed:.1f}s: {command_id}")
+
+                    outputs[item["index"]] = function_output(item["call_id"], result)
+
+        return [output for output in outputs if output is not None]
 
     def _reconcile_uncertain_commands(self) -> list[dict[str, Any]]:
         updates: list[dict[str, Any]] = []

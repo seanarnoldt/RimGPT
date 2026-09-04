@@ -43,12 +43,7 @@ class RimWorldBridge:
     def get_command_status(self, command_id: str) -> dict[str, Any]:
         return self._request_json("GET", f"/command/{command_id}")
 
-    def send_command_and_wait(
-        self,
-        command: dict[str, Any],
-        timeout: float = 5.0,
-        poll_interval: float = 0.25,
-    ) -> dict[str, Any]:
+    def submit_command(self, command: dict[str, Any]) -> dict[str, Any]:
         started = time.monotonic()
         command = dict(command)
         command_id = str(command.get("commandId") or uuid.uuid4().hex)
@@ -69,39 +64,94 @@ class RimWorldBridge:
                 status = self.get_command_status(command_id)
             except RimWorldBridgeError:
                 raise CommandStatusUnreachable(command_id, str(exc), elapsed) from exc
-            if status.get("status") == "completed":
-                status["elapsedSeconds"] = round(time.monotonic() - started, 3)
-                return status
-            status["commandId"] = command_id
-            status["elapsedSeconds"] = round(elapsed, 3)
-            raise CommandStatusTimeout(command_id, status, elapsed) from exc
+            return {
+                "accepted": True,
+                "commandId": command_id,
+                "command": command,
+                "startedAt": started,
+                "submitElapsedSeconds": round(elapsed, 3),
+                "submitUncertain": True,
+                "status": status,
+            }
 
-        deadline = started + timeout
-        while time.monotonic() < deadline:
+        return {
+            "accepted": True,
+            "commandId": command_id,
+            "command": command,
+            "startedAt": started,
+            "submitElapsedSeconds": round(time.monotonic() - started, 3),
+        }
+
+    def submit_commands(self, commands: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [self.submit_command(command) for command in commands]
+
+    def wait_for_commands(
+        self,
+        submissions: list[dict[str, Any]],
+        timeout: float = 5.0,
+        poll_interval: float = 0.25,
+    ) -> dict[str, dict[str, Any]]:
+        pending: dict[str, dict[str, Any]] = {str(item["commandId"]): item for item in submissions}
+        results: dict[str, dict[str, Any]] = {}
+        last_errors: dict[str, str] = {}
+        deadline = time.monotonic() + timeout
+
+        while pending and time.monotonic() < deadline:
+            for command_id in list(pending):
+                try:
+                    status = self.get_command_status(command_id)
+                except RimWorldBridgeError as exc:
+                    last_errors[command_id] = str(exc)
+                    continue
+
+                if status.get("status") == "completed":
+                    status["elapsedSeconds"] = round(time.monotonic() - pending[command_id]["startedAt"], 3)
+                    results[command_id] = status
+                    del pending[command_id]
+
+            if pending:
+                time.sleep(poll_interval)
+
+        for command_id, submission in list(pending.items()):
+            elapsed = time.monotonic() - submission["startedAt"]
             try:
-                status = self.get_command_status(command_id)
+                final_status = self.get_command_status(command_id)
             except RimWorldBridgeError as exc:
-                elapsed = time.monotonic() - started
-                raise CommandStatusUnreachable(command_id, str(exc), elapsed) from exc
+                results[command_id] = {
+                    "commandId": command_id,
+                    "status": "unknown",
+                    "success": None,
+                    "uncertain": True,
+                    "error": last_errors.get(command_id, str(exc)),
+                    "elapsedSeconds": round(elapsed, 3),
+                }
+                continue
 
-            if status.get("status") == "completed":
-                status["elapsedSeconds"] = round(time.monotonic() - started, 3)
-                return status
-            time.sleep(poll_interval)
+            final_status["elapsedSeconds"] = round(time.monotonic() - submission["startedAt"], 3)
+            if final_status.get("status") == "completed":
+                results[command_id] = final_status
+            elif final_status.get("status") == "queued":
+                final_status["success"] = None
+                final_status["uncertain"] = True
+                results[command_id] = final_status
+            else:
+                final_status["success"] = None
+                final_status["uncertain"] = True
+                results[command_id] = final_status
 
-        elapsed = time.monotonic() - started
-        try:
-            final_status = self.get_command_status(command_id)
-        except RimWorldBridgeError as exc:
-            raise CommandStatusUnreachable(command_id, str(exc), elapsed) from exc
+        return results
 
-        if final_status.get("status") == "completed":
-            final_status["elapsedSeconds"] = round(time.monotonic() - started, 3)
-            return final_status
-
-        final_status["commandId"] = command_id
-        final_status["elapsedSeconds"] = round(elapsed, 3)
-        raise CommandStatusTimeout(command_id, final_status, elapsed)
+    def send_command_and_wait(
+        self,
+        command: dict[str, Any],
+        timeout: float = 5.0,
+        poll_interval: float = 0.25,
+    ) -> dict[str, Any]:
+        submission = self.submit_command(command)
+        command_id = str(submission["commandId"])
+        results = self.wait_for_commands([submission], timeout=timeout, poll_interval=poll_interval)
+        result = results[command_id]
+        return result
 
     def reconcile_command(self, command_id: str, started_at: float | None = None) -> dict[str, Any]:
         status = self.get_command_status(command_id)

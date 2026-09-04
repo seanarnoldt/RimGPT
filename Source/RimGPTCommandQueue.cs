@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System;
 using Verse;
 
 namespace RimGPT
@@ -14,6 +15,8 @@ namespace RimGPT
 
         public static void Enqueue(RimGPTCommand command)
         {
+            command.QueuedAtMillis = Environment.TickCount;
+
             lock (ResultsLock)
             {
                 Results[command.CommandId] = RimGPTCommandResult.Queued(command.CommandId);

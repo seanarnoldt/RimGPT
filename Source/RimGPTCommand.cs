@@ -15,6 +15,7 @@ namespace RimGPT
     {
         public string CommandId { get; private set; }
         public RimGPTCommandType Type { get; private set; }
+        public int QueuedAtMillis { get; set; }
         public int Speed { get; set; }
         public string PawnId { get; set; }
         public int X { get; set; }
