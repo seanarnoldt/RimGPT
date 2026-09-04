@@ -5,6 +5,16 @@ from typing import Any
 from openai import OpenAI
 
 from bridge import CommandStatusUnreachable, RimWorldBridge, RimWorldBridgeError
+from context_telemetry import (
+    DEFAULT_MAX_INPUT_TOKENS_PER_REQUEST,
+    DEFAULT_MAX_MODEL_REQUESTS_PER_CYCLE,
+    ModelContextLimitError,
+    ModelRequestLimitError,
+    Pricing,
+    extract_usage,
+    measure_context,
+    serialized_chars,
+)
 from tools import TOOLS, convert_blueprint_placements, is_read_only_tool, tool_call_to_bridge_command
 
 DEFAULT_MAX_TOOL_ROUNDS = 8
@@ -78,6 +88,10 @@ class AgentController:
         max_total_tool_calls: int = DEFAULT_MAX_TOTAL_TOOL_CALLS,
         max_write_commands: int = DEFAULT_MAX_WRITE_COMMANDS,
         repeated_failed_call_limit: int = DEFAULT_REPEATED_FAILED_CALL_LIMIT,
+        max_input_tokens_per_request: int = DEFAULT_MAX_INPUT_TOKENS_PER_REQUEST,
+        max_model_requests_per_cycle: int = DEFAULT_MAX_MODEL_REQUESTS_PER_CYCLE,
+        pricing: Pricing | None = None,
+        client: Any | None = None,
     ) -> None:
         self.bridge = bridge
         self.model = model
@@ -86,7 +100,10 @@ class AgentController:
         self.max_total_tool_calls = max_total_tool_calls
         self.max_write_commands = max_write_commands
         self.repeated_failed_call_limit = repeated_failed_call_limit
-        self.client = OpenAI()
+        self.max_input_tokens_per_request = max_input_tokens_per_request
+        self.max_model_requests_per_cycle = max_model_requests_per_cycle
+        self.pricing = pricing or Pricing.from_environment()
+        self.client = client or OpenAI()
         self.uncertain_commands: dict[str, dict[str, Any]] = {}
         self.current_state: dict[str, Any] | None = None
         self._last_batch_had_write = False
@@ -94,8 +111,14 @@ class AgentController:
         self.write_commands = 0
         self.failed_call_counts: dict[str, int] = {}
         self.termination_reason: str | None = None
+        self.model_request_count = 0
+        self.accumulated_tool_result_chars = 0
+        self.carried_context_chars = 0
+        self.cycle_cost = 0.0
+        self.session_cost = 0.0
 
     def run_once(self) -> None:
+        self._begin_cycle()
         print("[STATE] Checking RimGPT bridge health")
         health = self.bridge.health()
         print(f"[STATE] Bridge health: {health.get('status')} ({health.get('bridge')})")
@@ -105,26 +128,27 @@ class AgentController:
         print(f"[STATE] {summarize_state(state)}")
 
         print(f"[MODEL] Requesting one decision cycle from {self.model}")
-        response = self.client.responses.create(
-            model=self.model,
-            instructions=SYSTEM_INSTRUCTIONS,
-            tools=TOOLS,
-            input=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "input_text",
-                            "text": (
-                                "Review this RimWorld State API snapshot and decide whether to use the "
-                                "available tools. After any tool results, provide a concise final assessment.\n\n"
-                                + json.dumps(state, separators=(",", ":"))
-                            ),
-                        }
-                    ],
-                }
-            ],
-        )
+        initial_input = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": (
+                            "Review this RimWorld State API snapshot and decide whether to use the "
+                            "available tools. After any tool results, provide a concise final assessment.\n\n"
+                            + json.dumps(state, separators=(",", ":"))
+                        ),
+                    }
+                ],
+            }
+        ]
+        try:
+            response = self._request_model(initial_input, state=state)
+        except (ModelContextLimitError, ModelRequestLimitError) as exc:
+            self.termination_reason = str(exc)
+            print(f"[ERROR] {exc}")
+            return
 
         final_response = self._handle_tool_rounds(response)
         assessment = getattr(final_response, "output_text", "") or collect_output_text(final_response)
@@ -163,14 +187,21 @@ class AgentController:
 
             post_action_state = self._fresh_state_message(round_start_version, self._last_batch_had_write and not self.dry_run)
 
-            print("[MODEL] Sending tool results and fresh state back to model")
-            current = self.client.responses.create(
-                model=self.model,
-                instructions=SYSTEM_INSTRUCTIONS,
-                tools=TOOLS,
-                previous_response_id=current.id,
-                input=outputs + [post_action_state],
+            continuation_input = outputs + [post_action_state]
+            self.accumulated_tool_result_chars += sum(
+                serialized_chars(output) for output in outputs if output.get("type") == "function_call_output"
             )
+            print("[MODEL] Sending tool results and fresh state back to model")
+            try:
+                current = self._request_model(
+                    continuation_input,
+                    state=self.current_state,
+                    previous_response_id=current.id,
+                )
+            except (ModelContextLimitError, ModelRequestLimitError) as exc:
+                self.termination_reason = str(exc)
+                print(f"[ERROR] Tool-call loop terminated: {exc}")
+                return current
 
         self._reconcile_uncertain_commands()
         self.termination_reason = f"max tool-call rounds reached ({self.max_tool_rounds})"
@@ -362,6 +393,78 @@ class AgentController:
         if not hasattr(self, "termination_reason"):
             self.termination_reason = None
 
+    def _begin_cycle(self) -> None:
+        self.total_tool_calls = 0
+        self.write_commands = 0
+        self.failed_call_counts = {}
+        self.termination_reason = None
+        self.model_request_count = 0
+        self.accumulated_tool_result_chars = 0
+        self.carried_context_chars = 0
+        self.cycle_cost = 0.0
+
+    def _request_model(
+        self,
+        input_items: list[dict[str, Any]],
+        *,
+        state: dict[str, Any] | None,
+        previous_response_id: str | None = None,
+    ) -> Any:
+        if self.model_request_count >= self.max_model_requests_per_cycle:
+            raise ModelRequestLimitError(
+                f"Maximum model requests per decision cycle reached: {self.max_model_requests_per_cycle}"
+            )
+
+        breakdown = measure_context(
+            instructions=SYSTEM_INSTRUCTIONS,
+            tools=TOOLS,
+            input_items=input_items,
+            state=state,
+            accumulated_tool_result_chars=self.accumulated_tool_result_chars,
+            carried_context_chars=self.carried_context_chars,
+        )
+        print(breakdown.as_log_line())
+        if breakdown.estimated_input_tokens > self.max_input_tokens_per_request:
+            print(
+                "[CONTEXT LIMIT] "
+                f"system={breakdown.system_chars} dynamic={breakdown.dynamic_input_chars} "
+                f"tools={breakdown.tool_schema_chars} toolResults={breakdown.accumulated_tool_result_chars} "
+                f"fullState={breakdown.full_state_chars} operations={breakdown.operations_chars} "
+                f"estimatedInputTokens={breakdown.estimated_input_tokens}"
+            )
+            raise ModelContextLimitError(breakdown, self.max_input_tokens_per_request)
+
+        request_number = self.model_request_count + 1
+        request: dict[str, Any] = {
+            "model": self.model,
+            "instructions": SYSTEM_INSTRUCTIONS,
+            "tools": TOOLS,
+            "input": input_items,
+        }
+        if previous_response_id:
+            request["previous_response_id"] = previous_response_id
+        response = self.client.responses.create(**request)
+        self.model_request_count = request_number
+        # A continuation references prior Responses output server-side. Track
+        # the response payload we can observe so its growth remains visible to
+        # the preflight estimate without re-sending it from this process.
+        self.carried_context_chars += serialized_chars(input_items) + serialized_chars(getattr(response, "output", []))
+        usage = extract_usage(response, self.pricing)
+        if usage.estimated_cost is not None:
+            self.cycle_cost += usage.estimated_cost
+            self.session_cost += usage.estimated_cost
+        print(
+            "[COST] "
+            f"request={request_number} model={self.model} inputTokens={format_metric(usage.input_tokens)} "
+            f"cachedInputTokens={format_metric(usage.cached_input_tokens)} "
+            f"uncachedInputTokens={format_metric(usage.uncached_input_tokens)} "
+            f"outputTokens={format_metric(usage.output_tokens)} "
+            f"estimatedRequestCost={format_cost(usage.estimated_cost)} "
+            f"cycleCost={format_cost(self.cycle_cost if usage.estimated_cost is not None else None)} "
+            f"sessionCost={format_cost(self.session_cost if usage.estimated_cost is not None else None)}"
+        )
+        return response
+
     def _execute_read_only_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         started = time.monotonic()
         try:
@@ -378,6 +481,8 @@ class AgentController:
                 result = self.bridge.get_build_info(arguments["def_name"])
             elif name == "list_growable_plants":
                 result = self.bridge.list_growable_plants()
+            elif name == "list_recipes":
+                result = self.bridge.list_recipes(arguments["worktable_id"])
             elif name == "check_build_placements":
                 result = self.bridge.check_build_placements(convert_blueprint_placements(arguments["placements"]))
             elif name == "check_zone_placement":
@@ -584,3 +689,11 @@ def summarize_state(state: dict[str, Any]) -> str:
 
 def format_arguments(arguments: dict[str, Any]) -> str:
     return ", ".join(f"{key}={value!r}" for key, value in arguments.items())
+
+
+def format_metric(value: int | None) -> str:
+    return str(value) if value is not None else "unavailable"
+
+
+def format_cost(value: float | None) -> str:
+    return f"${value:.4f}" if value is not None else "unavailable"
