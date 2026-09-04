@@ -8,6 +8,7 @@ namespace RimGPT
         static RimGPTBridge()
         {
             Log.Message("[RimGPT] Bridge loaded successfully");
+            RimGPTHttpBridge.Start();
         }
     }
 }
