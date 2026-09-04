@@ -8,7 +8,16 @@ namespace RimGPT
         Draft,
         Undraft,
         Move,
-        SetWorkPriority
+        SetWorkPriority,
+        Allow,
+        Forbid,
+        AllowAll,
+        SetResearch,
+        PrioritizeJob,
+        DesignateMine,
+        DesignateCut,
+        DesignateHarvest,
+        DesignateHunt
     }
 
     public sealed class RimGPTCommand
@@ -22,6 +31,9 @@ namespace RimGPT
         public int Z { get; set; }
         public string WorkType { get; set; }
         public int Priority { get; set; }
+        public string ThingId { get; set; }
+        public string TargetId { get; set; }
+        public string ResearchDef { get; set; }
 
         public RimGPTCommand(string commandId, RimGPTCommandType type)
         {
@@ -49,6 +61,24 @@ namespace RimGPT
                         return "move";
                     case RimGPTCommandType.SetWorkPriority:
                         return "setWorkPriority";
+                    case RimGPTCommandType.Allow:
+                        return "allow";
+                    case RimGPTCommandType.Forbid:
+                        return "forbid";
+                    case RimGPTCommandType.AllowAll:
+                        return "allowAll";
+                    case RimGPTCommandType.SetResearch:
+                        return "setResearch";
+                    case RimGPTCommandType.PrioritizeJob:
+                        return "prioritizeJob";
+                    case RimGPTCommandType.DesignateMine:
+                        return "designateMine";
+                    case RimGPTCommandType.DesignateCut:
+                        return "designateCut";
+                    case RimGPTCommandType.DesignateHarvest:
+                        return "designateHarvest";
+                    case RimGPTCommandType.DesignateHunt:
+                        return "designateHunt";
                     default:
                         return "unknown";
                 }

@@ -22,6 +22,7 @@ namespace RimGPT
             state.Colony = BuildColonyState(map);
             state.Colonists = BuildColonists(map);
             state.Resources = BuildResources(map);
+            state.MapThings = BuildMapThings(map);
             state.Research = BuildResearch();
             state.Threats = BuildThreats(map);
 
@@ -264,77 +265,252 @@ namespace RimGPT
 
         private static RimGPTResourcesState BuildResources(Map map)
         {
+            RimGPTResourceVisibility visibility = CountVisibleResources(map);
             RimGPTResourcesState resources = new RimGPTResourcesState();
-            resources.Silver = CountResource(map, "Silver");
-            resources.Wood = CountResource(map, "WoodLog");
-            resources.Steel = CountResource(map, "Steel");
-            resources.Plasteel = CountResource(map, "Plasteel");
-            resources.Components = CountResource(map, "ComponentIndustrial");
-            resources.AdvancedComponents = CountResource(map, "ComponentSpacer");
-            resources.Medicine = CountResource(map, "MedicineHerbal") + CountResource(map, "MedicineIndustrial") + CountResource(map, "MedicineUltratech");
-            resources.IndustrialMedicine = CountResource(map, "MedicineIndustrial");
-            resources.GlitterworldMedicine = CountResource(map, "MedicineUltratech");
-            resources.Food = BuildFoodState(map);
+            resources.Silver = visibility.Available.Silver;
+            resources.Wood = visibility.Available.Wood;
+            resources.Steel = visibility.Available.Steel;
+            resources.Plasteel = visibility.Available.Plasteel;
+            resources.Components = visibility.Available.Components;
+            resources.AdvancedComponents = visibility.Available.AdvancedComponents;
+            resources.Medicine = visibility.Available.Medicine;
+            resources.IndustrialMedicine = visibility.Available.IndustrialMedicine;
+            resources.GlitterworldMedicine = visibility.Available.GlitterworldMedicine;
+            resources.Food = visibility.Available.Food;
+            resources.Available = visibility.Available;
+            resources.Forbidden = visibility.Forbidden;
+            resources.TotalVisible = visibility.TotalVisible;
             return resources;
         }
 
-        private static int CountResource(Map map, string defName)
+        private static RimGPTResourceVisibility CountVisibleResources(Map map)
         {
-            ThingDef def = DefDatabase<ThingDef>.GetNamedSilentFail(defName);
-            if (def == null || map.resourceCounter == null)
-            {
-                return 0;
-            }
+            RimGPTResourceVisibility visibility = new RimGPTResourceVisibility();
+            visibility.Available = NewResourceCounts();
+            visibility.Forbidden = NewResourceCounts();
+            visibility.TotalVisible = NewResourceCounts();
 
-            return SafeInt(delegate { return map.resourceCounter.GetCount(def); });
-        }
-
-        private static RimGPTFoodState BuildFoodState(Map map)
-        {
-            RimGPTFoodState food = new RimGPTFoodState();
             if (map.listerThings == null)
             {
-                return food;
+                return visibility;
             }
 
-            List<Thing> foodThings = map.listerThings.ThingsInGroup(ThingRequestGroup.FoodSourceNotPlantOrTree);
-            for (int i = 0; i < foodThings.Count; i++)
+            List<Thing> haulables = map.listerThings.ThingsInGroup(ThingRequestGroup.HaulableEver);
+            for (int i = 0; i < haulables.Count; i++)
             {
-                Thing thing = foodThings[i];
-                if (thing == null || thing.def == null || thing.Position.Fogged(map) || thing.IsForbidden(Faction.OfPlayer))
+                Thing thing = haulables[i];
+                if (!IsVisibleOnMap(thing, map) || thing.def == null)
                 {
                     continue;
                 }
 
-                if (thing.def.IsNutritionGivingIngestible)
+                bool forbidden = thing.IsForbidden(Faction.OfPlayer);
+                AddResourceThing(visibility.TotalVisible, thing);
+                if (forbidden)
                 {
-                    food.TotalNutrition += thing.GetStatValue(StatDefOf.Nutrition) * thing.stackCount;
+                    AddResourceThing(visibility.Forbidden, thing);
                 }
-
-                if (thing.def.ingestible != null && thing.def.ingestible.IsMeal)
+                else
                 {
-                    food.Meals += thing.stackCount;
+                    AddResourceThing(visibility.Available, thing);
                 }
             }
 
-            return food;
+            return visibility;
+        }
+
+        private static RimGPTResourceCountsState NewResourceCounts()
+        {
+            RimGPTResourceCountsState counts = new RimGPTResourceCountsState();
+            counts.Food = new RimGPTFoodState();
+            return counts;
+        }
+
+        private static void AddResourceThing(RimGPTResourceCountsState counts, Thing thing)
+        {
+            string defName = thing.def.defName;
+            int stackCount = thing.stackCount;
+
+            if (defName == "Silver")
+            {
+                counts.Silver += stackCount;
+            }
+            else if (defName == "WoodLog")
+            {
+                counts.Wood += stackCount;
+            }
+            else if (defName == "Steel")
+            {
+                counts.Steel += stackCount;
+            }
+            else if (defName == "Plasteel")
+            {
+                counts.Plasteel += stackCount;
+            }
+            else if (defName == "ComponentIndustrial")
+            {
+                counts.Components += stackCount;
+            }
+            else if (defName == "ComponentSpacer")
+            {
+                counts.AdvancedComponents += stackCount;
+            }
+            else if (defName == "MedicineHerbal")
+            {
+                counts.Medicine += stackCount;
+            }
+            else if (defName == "MedicineIndustrial")
+            {
+                counts.Medicine += stackCount;
+                counts.IndustrialMedicine += stackCount;
+            }
+            else if (defName == "MedicineUltratech")
+            {
+                counts.Medicine += stackCount;
+                counts.GlitterworldMedicine += stackCount;
+            }
+
+            if (thing.def.IsNutritionGivingIngestible)
+            {
+                counts.Food.TotalNutrition += thing.GetStatValue(StatDefOf.Nutrition) * stackCount;
+            }
+
+            if (thing.def.ingestible != null && thing.def.ingestible.IsMeal)
+            {
+                counts.Food.Meals += stackCount;
+            }
+        }
+
+        private static RimGPTMapThingsState BuildMapThings(Map map)
+        {
+            const int MaxThingsPerList = 120;
+            RimGPTMapThingsState result = new RimGPTMapThingsState();
+            result.Forbidden = new List<RimGPTMapThingState>();
+            result.Haulable = new List<RimGPTMapThingState>();
+
+            if (map.listerThings == null)
+            {
+                return result;
+            }
+
+            List<Thing> haulables = map.listerThings.ThingsInGroup(ThingRequestGroup.HaulableEver);
+            for (int i = 0; i < haulables.Count; i++)
+            {
+                Thing thing = haulables[i];
+                if (!IsVisibleOnMap(thing, map) || !IsUsefulMapThing(thing))
+                {
+                    continue;
+                }
+
+                bool forbidden = thing.IsForbidden(Faction.OfPlayer);
+                if (forbidden && result.Forbidden.Count < MaxThingsPerList)
+                {
+                    result.Forbidden.Add(BuildMapThing(thing, true));
+                }
+
+                if (result.Haulable.Count < MaxThingsPerList)
+                {
+                    result.Haulable.Add(BuildMapThing(thing, forbidden));
+                }
+
+                if (result.Forbidden.Count >= MaxThingsPerList && result.Haulable.Count >= MaxThingsPerList)
+                {
+                    break;
+                }
+            }
+
+            return result;
+        }
+
+        private static RimGPTMapThingState BuildMapThing(Thing thing, bool forbidden)
+        {
+            RimGPTMapThingState result = new RimGPTMapThingState();
+            result.Id = SafeThingId(thing);
+            result.DefName = thing.def != null ? thing.def.defName : null;
+            result.Label = SafeLabel(thing);
+            result.StackCount = thing.stackCount;
+            result.Position = BuildPosition(thing.Position);
+            result.Forbidden = forbidden;
+            return result;
+        }
+
+        private static bool IsUsefulMapThing(Thing thing)
+        {
+            if (thing == null || thing.def == null || !thing.def.EverHaulable)
+            {
+                return false;
+            }
+
+            if (thing.def.IsNutritionGivingIngestible || thing.def.IsWeapon || thing.def.IsMedicine)
+            {
+                return true;
+            }
+
+            string defName = thing.def.defName;
+            return defName == "Silver"
+                || defName == "WoodLog"
+                || defName == "Steel"
+                || defName == "Plasteel"
+                || defName == "ComponentIndustrial"
+                || defName == "ComponentSpacer"
+                || thing.def.category == ThingCategory.Item;
+        }
+
+        private static bool IsVisibleOnMap(Thing thing, Map map)
+        {
+            return thing != null && thing.Spawned && thing.Map == map && !thing.Position.Fogged(map);
         }
 
         private static RimGPTResearchState BuildResearch()
         {
             RimGPTResearchState research = new RimGPTResearchState();
+            research.Available = BuildAvailableResearchProjects();
             if (Find.ResearchManager == null || Find.ResearchManager.GetProject() == null)
             {
                 return research;
             }
 
             ResearchProjectDef project = Find.ResearchManager.GetProject();
-            research.Current = new RimGPTResearchProjectState();
-            research.Current.DefName = project.defName;
-            research.Current.Label = project.label;
-            research.Current.Progress = SafeFloat(delegate { return Find.ResearchManager.GetProgress(project); });
-            research.Current.Cost = project.baseCost;
+            research.Current = BuildResearchProject(project);
             return research;
+        }
+
+        private static List<RimGPTResearchProjectState> BuildAvailableResearchProjects()
+        {
+            const int MaxAvailableResearchProjects = 80;
+            List<RimGPTResearchProjectState> result = new List<RimGPTResearchProjectState>();
+            if (Find.ResearchManager == null)
+            {
+                return result;
+            }
+
+            List<ResearchProjectDef> projects = DefDatabase<ResearchProjectDef>.AllDefsListForReading;
+            for (int i = 0; i < projects.Count; i++)
+            {
+                ResearchProjectDef project = projects[i];
+                if (project == null || project.IsFinished || project.IsHidden || !project.CanStartNow)
+                {
+                    continue;
+                }
+
+                result.Add(BuildResearchProject(project));
+                if (result.Count >= MaxAvailableResearchProjects)
+                {
+                    break;
+                }
+            }
+
+            return result;
+        }
+
+        private static RimGPTResearchProjectState BuildResearchProject(ResearchProjectDef project)
+        {
+            RimGPTResearchProjectState result = new RimGPTResearchProjectState();
+            result.DefName = project.defName;
+            result.Label = project.label;
+            result.Progress = SafeFloat(delegate { return Find.ResearchManager != null ? Find.ResearchManager.GetProgress(project) : 0f; });
+            result.Cost = project.baseCost;
+            return result;
         }
 
         private static List<RimGPTThreatState> BuildThreats(Map map)
@@ -464,6 +640,13 @@ namespace RimGPT
             {
                 return null;
             }
+        }
+
+        private sealed class RimGPTResourceVisibility
+        {
+            public RimGPTResourceCountsState Available;
+            public RimGPTResourceCountsState Forbidden;
+            public RimGPTResourceCountsState TotalVisible;
         }
     }
 }

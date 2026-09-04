@@ -8,6 +8,7 @@ namespace RimGPT
         public RimGPTColonyState Colony;
         public List<RimGPTColonistState> Colonists;
         public RimGPTResourcesState Resources;
+        public RimGPTMapThingsState MapThings;
         public RimGPTResearchState Research;
         public List<RimGPTThreatState> Threats;
     }
@@ -116,6 +117,23 @@ namespace RimGPT
         public int IndustrialMedicine;
         public int GlitterworldMedicine;
         public RimGPTFoodState Food;
+        public RimGPTResourceCountsState Available;
+        public RimGPTResourceCountsState Forbidden;
+        public RimGPTResourceCountsState TotalVisible;
+    }
+
+    public sealed class RimGPTResourceCountsState
+    {
+        public int Silver;
+        public int Wood;
+        public int Steel;
+        public int Plasteel;
+        public int Components;
+        public int AdvancedComponents;
+        public int Medicine;
+        public int IndustrialMedicine;
+        public int GlitterworldMedicine;
+        public RimGPTFoodState Food;
     }
 
     public sealed class RimGPTFoodState
@@ -127,6 +145,7 @@ namespace RimGPT
     public sealed class RimGPTResearchState
     {
         public RimGPTResearchProjectState Current;
+        public List<RimGPTResearchProjectState> Available;
     }
 
     public sealed class RimGPTResearchProjectState
@@ -147,5 +166,21 @@ namespace RimGPT
         public RimGPTPositionState Position;
         public bool Downed;
         public RimGPTEquipmentState Weapon;
+    }
+
+    public sealed class RimGPTMapThingsState
+    {
+        public List<RimGPTMapThingState> Forbidden;
+        public List<RimGPTMapThingState> Haulable;
+    }
+
+    public sealed class RimGPTMapThingState
+    {
+        public string Id;
+        public string DefName;
+        public string Label;
+        public int StackCount;
+        public RimGPTPositionState Position;
+        public bool Forbidden;
     }
 }

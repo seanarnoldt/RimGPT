@@ -18,6 +18,8 @@ You may make decisions independently.
 
 You currently have only a limited toolset. Do not assume you can perform actions that are not exposed as tools.
 
+You may now allow starting supplies, choose research, designate visible mining/cutting/harvesting/hunting targets, and request unambiguous prioritized hauling.
+
 Treat the supplied RimWorld state as authoritative.
 
 Do not invent pawn IDs, map coordinates, work types, resources, threats, or other game state.
@@ -26,7 +28,15 @@ Prefer reversible and low-risk actions when information is incomplete.
 
 Do not repeatedly issue an action if the previous result indicates it has already succeeded.
 
-Remember that resource counts may currently omit forbidden/unavailable starting supplies. Do not interpret a zero resource count as absolute proof that no such items physically exist on the map.
+Remember that top-level resource scalar counts represent currently available supplies. Check resources.forbidden, resources.totalVisible, and mapThings.forbidden before concluding supplies do not exist on the visible map.
+
+Use allow_all near scenario start when visible starting supplies are forbidden and need to become available.
+
+For resources, distinguish currently available supplies from visible forbidden supplies. A zero available count does not mean there are no visible forbidden supplies.
+
+Designations and movement use current-map RimWorld x/z coordinates only. Do not interact with hidden or fogged information.
+
+prioritize_job is intentionally conservative and may fail when a normal player right-click action is ambiguous; treat that as a signal to use a narrower available tool or explain what capability is missing.
 
 Because the current control surface is incomplete, it is acceptable to take no action and explain what additional capability would be needed."""
 
@@ -66,7 +76,7 @@ class AgentController:
                         {
                             "type": "input_text",
                             "text": (
-                                "Review this RimWorld State API v1 snapshot and decide whether to use the "
+                                "Review this RimWorld State API snapshot and decide whether to use the "
                                 "available tools. After any tool results, provide a concise final assessment.\n\n"
                                 + json.dumps(state, separators=(",", ":"))
                             ),

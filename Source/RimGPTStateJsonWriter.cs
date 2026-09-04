@@ -14,6 +14,7 @@ namespace RimGPT
             WriteColony(json, state.Colony);
             WriteColonists(json, state.Colonists);
             WriteResources(json, state.Resources);
+            WriteMapThings(json, state.MapThings);
             WriteResearch(json, state.Research);
             WriteThreats(json, state.Threats);
             json.Append("}");
@@ -87,6 +88,35 @@ namespace RimGPT
             json.Append(",\"food\":{");
             WriteFloatField(json, "totalNutrition", resources.Food.TotalNutrition, false);
             WriteIntField(json, "meals", resources.Food.Meals, true);
+            json.Append("}");
+            WriteResourceCountsField(json, "available", resources.Available, true);
+            WriteResourceCountsField(json, "forbidden", resources.Forbidden, true);
+            WriteResourceCountsField(json, "totalVisible", resources.TotalVisible, true);
+            json.Append("}");
+        }
+
+        private static void WriteResourceCountsField(StringBuilder json, string name, RimGPTResourceCountsState counts, bool comma)
+        {
+            WriteName(json, name, comma);
+            if (counts == null)
+            {
+                json.Append("null");
+                return;
+            }
+
+            json.Append("{");
+            WriteIntField(json, "silver", counts.Silver, false);
+            WriteIntField(json, "wood", counts.Wood, true);
+            WriteIntField(json, "steel", counts.Steel, true);
+            WriteIntField(json, "plasteel", counts.Plasteel, true);
+            WriteIntField(json, "components", counts.Components, true);
+            WriteIntField(json, "advancedComponents", counts.AdvancedComponents, true);
+            WriteIntField(json, "medicine", counts.Medicine, true);
+            WriteIntField(json, "industrialMedicine", counts.IndustrialMedicine, true);
+            WriteIntField(json, "glitterworldMedicine", counts.GlitterworldMedicine, true);
+            json.Append(",\"food\":{");
+            WriteFloatField(json, "totalNutrition", counts.Food != null ? counts.Food.TotalNutrition : 0f, false);
+            WriteIntField(json, "meals", counts.Food != null ? counts.Food.Meals : 0, true);
             json.Append("}}");
         }
 
@@ -107,7 +137,74 @@ namespace RimGPT
                 WriteFloatField(json, "cost", research.Current.Cost, true);
                 json.Append("}");
             }
+            WriteResearchProjectsField(json, "available", research.Available, true);
             json.Append("}");
+        }
+
+        private static void WriteResearchProjectsField(StringBuilder json, string name, List<RimGPTResearchProjectState> projects, bool comma)
+        {
+            WriteName(json, name, comma);
+            json.Append("[");
+            if (projects != null)
+            {
+                for (int i = 0; i < projects.Count; i++)
+                {
+                    if (i > 0)
+                    {
+                        json.Append(",");
+                    }
+
+                    RimGPTResearchProjectState project = projects[i];
+                    json.Append("{");
+                    WriteStringField(json, "defName", project.DefName, false);
+                    WriteStringField(json, "label", project.Label, true);
+                    WriteFloatField(json, "progress", project.Progress, true);
+                    WriteFloatField(json, "cost", project.Cost, true);
+                    json.Append("}");
+                }
+            }
+            json.Append("]");
+        }
+
+        private static void WriteMapThings(StringBuilder json, RimGPTMapThingsState mapThings)
+        {
+            json.Append(",\"mapThings\":{");
+            if (mapThings == null)
+            {
+                json.Append("\"forbidden\":[],\"haulable\":[]}");
+                return;
+            }
+
+            WriteMapThingArrayField(json, "forbidden", mapThings.Forbidden, false);
+            WriteMapThingArrayField(json, "haulable", mapThings.Haulable, true);
+            json.Append("}");
+        }
+
+        private static void WriteMapThingArrayField(StringBuilder json, string name, List<RimGPTMapThingState> things, bool comma)
+        {
+            WriteName(json, name, comma);
+            json.Append("[");
+            if (things != null)
+            {
+                for (int i = 0; i < things.Count; i++)
+                {
+                    if (i > 0)
+                    {
+                        json.Append(",");
+                    }
+
+                    RimGPTMapThingState thing = things[i];
+                    json.Append("{");
+                    WriteStringField(json, "id", thing.Id, false);
+                    WriteStringField(json, "defName", thing.DefName, true);
+                    WriteStringField(json, "label", thing.Label, true);
+                    WriteIntField(json, "stackCount", thing.StackCount, true);
+                    WritePositionField(json, "position", thing.Position, true);
+                    WriteBoolField(json, "forbidden", thing.Forbidden, true);
+                    json.Append("}");
+                }
+            }
+            json.Append("]");
         }
 
         private static void WriteThreats(StringBuilder json, List<RimGPTThreatState> threats)

@@ -357,6 +357,138 @@ namespace RimGPT
                 return true;
             }
 
+            if (string.Equals(commandName, "allow", StringComparison.OrdinalIgnoreCase))
+            {
+                string thingId;
+                if (!TryReadString(body, "thingId", out thingId))
+                {
+                    error = "missingThingId";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.Allow);
+                command.ThingId = thingId;
+                return true;
+            }
+
+            if (string.Equals(commandName, "forbid", StringComparison.OrdinalIgnoreCase))
+            {
+                string thingId;
+                if (!TryReadString(body, "thingId", out thingId))
+                {
+                    error = "missingThingId";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.Forbid);
+                command.ThingId = thingId;
+                return true;
+            }
+
+            if (string.Equals(commandName, "allowAll", StringComparison.OrdinalIgnoreCase))
+            {
+                command = new RimGPTCommand(commandId, RimGPTCommandType.AllowAll);
+                return true;
+            }
+
+            if (string.Equals(commandName, "setResearch", StringComparison.OrdinalIgnoreCase))
+            {
+                string researchDef;
+                if (!TryReadString(body, "researchDef", out researchDef))
+                {
+                    error = "missingResearchDef";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.SetResearch);
+                command.ResearchDef = researchDef;
+                return true;
+            }
+
+            if (string.Equals(commandName, "prioritizeJob", StringComparison.OrdinalIgnoreCase))
+            {
+                string pawnId;
+                string targetId;
+                if (!TryReadString(body, "pawnId", out pawnId))
+                {
+                    error = "missingPawnId";
+                    return false;
+                }
+
+                if (!TryReadString(body, "targetId", out targetId))
+                {
+                    error = "missingTargetId";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.PrioritizeJob);
+                command.PawnId = pawnId;
+                command.TargetId = targetId;
+                return true;
+            }
+
+            if (string.Equals(commandName, "designateMine", StringComparison.OrdinalIgnoreCase))
+            {
+                int x;
+                int z;
+                if (!TryReadInt(body, "x", out x) || !TryReadInt(body, "z", out z))
+                {
+                    error = "missingCell";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.DesignateMine);
+                command.X = x;
+                command.Z = z;
+                return true;
+            }
+
+            if (string.Equals(commandName, "designateCut", StringComparison.OrdinalIgnoreCase))
+            {
+                int x;
+                int z;
+                if (!TryReadInt(body, "x", out x) || !TryReadInt(body, "z", out z))
+                {
+                    error = "missingCell";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.DesignateCut);
+                command.X = x;
+                command.Z = z;
+                return true;
+            }
+
+            if (string.Equals(commandName, "designateHarvest", StringComparison.OrdinalIgnoreCase))
+            {
+                int x;
+                int z;
+                if (!TryReadInt(body, "x", out x) || !TryReadInt(body, "z", out z))
+                {
+                    error = "missingCell";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.DesignateHarvest);
+                command.X = x;
+                command.Z = z;
+                return true;
+            }
+
+            if (string.Equals(commandName, "designateHunt", StringComparison.OrdinalIgnoreCase))
+            {
+                string thingId;
+                if (!TryReadString(body, "thingId", out thingId))
+                {
+                    error = "missingThingId";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.DesignateHunt);
+                command.ThingId = thingId;
+                return true;
+            }
+
             error = "unsupportedCommand";
             return false;
         }
