@@ -5,7 +5,12 @@ from typing import Any
 from openai import OpenAI
 
 from bridge import CommandStatusUnreachable, RimWorldBridge, RimWorldBridgeError
-from tools import TOOLS, is_read_only_tool, tool_call_to_bridge_command
+from tools import TOOLS, convert_blueprint_placements, is_read_only_tool, tool_call_to_bridge_command
+
+DEFAULT_MAX_TOOL_ROUNDS = 8
+DEFAULT_MAX_TOTAL_TOOL_CALLS = 100
+DEFAULT_MAX_WRITE_COMMANDS = 75
+DEFAULT_REPEATED_FAILED_CALL_LIMIT = 3
 
 
 SYSTEM_INSTRUCTIONS = """You are playing RimWorld through a restricted control interface.
@@ -44,6 +49,14 @@ Designations and movement use current-map RimWorld x/z coordinates only. Do not 
 
 Blueprint placement only creates normal construction blueprints; colonists still need resources, access, work priorities, and time to build them.
 
+Terrain support matters for buildings. Use inspect_map terrain affordances and build option requiredTerrainAffordance before placing blueprints.
+
+Before placing a large construction batch, preferably call check_build_placements with the planned placements. If several cells fail validation, adjust the plan instead of repeatedly attempting the same cells.
+
+Do not assume every visually open cell can support every structure.
+
+Avoid building steel walls at game start unless there is a specific strategic reason. Wood is generally less valuable as a long-term material, but steel is strategically important for machinery and early infrastructure.
+
 Prefer compact, practical early colony layouts. At game start prioritize immediate survival: supplies, shelter, food, beds, basic storage, research, and power as appropriate. Do not overbuild when resources are scarce.
 
 prioritize_job is intentionally conservative and may fail when a normal player right-click action is ambiguous; treat that as a signal to use a narrower available tool or explain what capability is missing.
@@ -57,16 +70,26 @@ class AgentController:
         bridge: RimWorldBridge,
         model: str,
         dry_run: bool = False,
-        max_tool_rounds: int = 4,
+        max_tool_rounds: int = DEFAULT_MAX_TOOL_ROUNDS,
+        max_total_tool_calls: int = DEFAULT_MAX_TOTAL_TOOL_CALLS,
+        max_write_commands: int = DEFAULT_MAX_WRITE_COMMANDS,
+        repeated_failed_call_limit: int = DEFAULT_REPEATED_FAILED_CALL_LIMIT,
     ) -> None:
         self.bridge = bridge
         self.model = model
         self.dry_run = dry_run
         self.max_tool_rounds = max_tool_rounds
+        self.max_total_tool_calls = max_total_tool_calls
+        self.max_write_commands = max_write_commands
+        self.repeated_failed_call_limit = repeated_failed_call_limit
         self.client = OpenAI()
         self.uncertain_commands: dict[str, dict[str, Any]] = {}
         self.current_state: dict[str, Any] | None = None
         self._last_batch_had_write = False
+        self.total_tool_calls = 0
+        self.write_commands = 0
+        self.failed_call_counts: dict[str, int] = {}
+        self.termination_reason: str | None = None
 
     def run_once(self) -> None:
         print("[STATE] Checking RimGPT bridge health")
@@ -107,17 +130,33 @@ class AgentController:
             print("[MODEL] Final assessment: no text returned")
 
     def _handle_tool_rounds(self, response: Any) -> Any:
+        self._ensure_safety_state()
         current = response
         for round_index in range(self.max_tool_rounds):
             tool_calls = get_function_calls(current)
             if not tool_calls:
                 self._reconcile_uncertain_commands()
+                print("[MODEL] Tool-call loop terminated: model returned no tool calls")
                 return current
 
+            if self.total_tool_calls + len(tool_calls) > self.max_total_tool_calls:
+                self.termination_reason = (
+                    f"max total model tool calls exceeded "
+                    f"({self.total_tool_calls + len(tool_calls)} > {self.max_total_tool_calls})"
+                )
+                print(f"[ERROR] Tool-call loop terminated: {self.termination_reason}")
+                self._reconcile_uncertain_commands()
+                return current
+
+            self.total_tool_calls += len(tool_calls)
             print(f"[MODEL] Tool-call round {round_index + 1}: {len(tool_calls)} call(s)")
             round_start_version = snapshot_version(self.current_state)
             outputs = self._execute_tool_call_batch(tool_calls)
             outputs.extend(self._reconcile_uncertain_commands())
+            if self.termination_reason is not None:
+                print(f"[ERROR] Tool-call loop terminated: {self.termination_reason}")
+                return current
+
             post_action_state = self._fresh_state_message(round_start_version, self._last_batch_had_write and not self.dry_run)
 
             print("[MODEL] Sending tool results and fresh state back to model")
@@ -130,10 +169,12 @@ class AgentController:
             )
 
         self._reconcile_uncertain_commands()
-        print("[ERROR] Reached max tool-call rounds; stopping to avoid an infinite loop")
+        self.termination_reason = f"max tool-call rounds reached ({self.max_tool_rounds})"
+        print(f"[ERROR] Tool-call loop terminated: {self.termination_reason}")
         return current
 
     def _execute_tool_call_batch(self, tool_calls: list[Any]) -> list[dict[str, Any]]:
+        self._ensure_safety_state()
         prepared: list[dict[str, Any]] = []
         outputs: list[dict[str, Any] | None] = [None] * len(tool_calls)
         self._last_batch_had_write = False
@@ -163,6 +204,7 @@ class AgentController:
                     result = {"success": False, "error": str(exc)}
                     print(f"[ERROR] {name}: {result['error']}")
                     outputs[index] = function_output(call_id, result)
+                    self._record_failed_call(name, arguments, result)
                 continue
 
             if self.dry_run:
@@ -176,11 +218,28 @@ class AgentController:
                 outputs[index] = function_output(call_id, result)
                 continue
 
+            if self.write_commands >= getattr(self, "max_write_commands", DEFAULT_MAX_WRITE_COMMANDS):
+                result = {
+                    "success": False,
+                    "error": (
+                        f"Write-command safety limit reached "
+                        f"({self.write_commands}/{getattr(self, 'max_write_commands', DEFAULT_MAX_WRITE_COMMANDS)}); command was not submitted."
+                    ),
+                    "command": bridge_command,
+                }
+                self.termination_reason = f"max write commands reached ({getattr(self, 'max_write_commands', DEFAULT_MAX_WRITE_COMMANDS)})"
+                print(f"[ERROR] {name}: {result['error']}")
+                outputs[index] = function_output(call_id, result)
+                self._record_failed_call(name, arguments, result)
+                continue
+
+            self.write_commands += 1
             prepared.append(
                 {
                     "index": index,
                     "call_id": call_id,
                     "name": name,
+                    "arguments": arguments,
                     "command": bridge_command,
                 }
             )
@@ -220,10 +279,12 @@ class AgentController:
                     }
                     print(f"[WARNING] command status unknown/unreachable after {exc.elapsed:.1f}s: {exc.command_id}")
                     outputs[item["index"]] = function_output(item["call_id"], result)
+                    self._record_failed_call(item["name"], item.get("arguments", {}), result)
                 except RimWorldBridgeError as exc:
                     result = {"success": False, "error": str(exc), "command": item["command"]}
                     print(f"[ERROR] {exc}")
                     outputs[item["index"]] = function_output(item["call_id"], result)
+                    self._record_failed_call(item["name"], item.get("arguments", {}), result)
 
             if submitted:
                 results = self.bridge.wait_for_commands(submitted)
@@ -244,6 +305,8 @@ class AgentController:
                     elapsed = float(result.get("elapsedSeconds", 0.0))
                     if result.get("status") == "completed":
                         print(f"[RESULT] {command_id} completed in {elapsed:.2f}s: {result}")
+                        if result.get("success") is False:
+                            self._record_failed_call(item["name"], item.get("arguments", {}), result)
                     elif result.get("status") == "queued":
                         self.uncertain_commands[command_id] = {
                             "call_id": item["call_id"],
@@ -265,6 +328,36 @@ class AgentController:
 
         return [output for output in outputs if output is not None]
 
+    def _record_failed_call(self, name: str, arguments: dict[str, Any], result: dict[str, Any]) -> None:
+        self._ensure_safety_state()
+        signature = failed_call_signature(name, arguments, result)
+        count = self.failed_call_counts.get(signature, 0) + 1
+        self.failed_call_counts[signature] = count
+        if count >= getattr(self, "repeated_failed_call_limit", DEFAULT_REPEATED_FAILED_CALL_LIMIT):
+            self.termination_reason = (
+                f"repeated failed call detected for {name} "
+                f"({count} substantially identical failures)"
+            )
+            print(f"[ERROR] Tool-call loop termination pending: {self.termination_reason}")
+
+    def _ensure_safety_state(self) -> None:
+        if not hasattr(self, "max_tool_rounds"):
+            self.max_tool_rounds = DEFAULT_MAX_TOOL_ROUNDS
+        if not hasattr(self, "max_total_tool_calls"):
+            self.max_total_tool_calls = DEFAULT_MAX_TOTAL_TOOL_CALLS
+        if not hasattr(self, "max_write_commands"):
+            self.max_write_commands = DEFAULT_MAX_WRITE_COMMANDS
+        if not hasattr(self, "repeated_failed_call_limit"):
+            self.repeated_failed_call_limit = DEFAULT_REPEATED_FAILED_CALL_LIMIT
+        if not hasattr(self, "total_tool_calls"):
+            self.total_tool_calls = 0
+        if not hasattr(self, "write_commands"):
+            self.write_commands = 0
+        if not hasattr(self, "failed_call_counts"):
+            self.failed_call_counts = {}
+        if not hasattr(self, "termination_reason"):
+            self.termination_reason = None
+
     def _execute_read_only_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         started = time.monotonic()
         try:
@@ -281,11 +374,15 @@ class AgentController:
                 result = self.bridge.get_build_info(arguments["def_name"])
             elif name == "list_growable_plants":
                 result = self.bridge.list_growable_plants()
+            elif name == "check_build_placements":
+                result = self.bridge.check_build_placements(convert_blueprint_placements(arguments["placements"]))
             else:
                 raise ValueError(f"Unsupported read-only tool: {name}")
         except Exception as exc:
             print(f"[ERROR] {name}: {exc}")
-            return {"success": False, "error": str(exc)}
+            result = {"success": False, "error": str(exc)}
+            self._record_failed_call(name, arguments, result)
+            return result
 
         elapsed = time.monotonic() - started
         print(f"[RESULT] {name} completed in {elapsed:.2f}s")
@@ -423,6 +520,31 @@ def snapshot_version(state: dict[str, Any] | None) -> int:
         return int(snapshot.get("version") or 0)
     except (TypeError, ValueError):
         return 0
+
+
+def failed_call_signature(name: str, arguments: dict[str, Any], result: dict[str, Any]) -> str:
+    reason = str(result.get("error") or result.get("message") or "")
+    normalized_reason = " ".join(reason.lower().split())
+    return json.dumps(
+        {
+            "name": name,
+            "arguments": normalize_for_signature(arguments),
+            "reason": normalized_reason,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def normalize_for_signature(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): normalize_for_signature(value[key]) for key in sorted(value)}
+    if isinstance(value, list):
+        normalized_items = [normalize_for_signature(item) for item in value]
+        if len(normalized_items) > 20:
+            return normalized_items[:20] + [{"truncatedCount": len(normalized_items) - 20}]
+        return normalized_items
+    return value
 
 
 def summarize_state(state: dict[str, Any]) -> str:

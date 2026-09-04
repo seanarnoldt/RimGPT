@@ -10,7 +10,8 @@ namespace RimGPT
         MapRegion,
         BuildOptions,
         BuildInfo,
-        GrowablePlants
+        GrowablePlants,
+        CheckBuildPlacements
     }
 
     public sealed class RimGPTReadRequest
@@ -23,6 +24,7 @@ namespace RimGPT
         public string Category;
         public string Search;
         public string DefName;
+        public System.Collections.Generic.List<RimGPTBlueprintPlacement> Placements;
         public int QueuedAtMillis;
         public string Json;
         public string Error;

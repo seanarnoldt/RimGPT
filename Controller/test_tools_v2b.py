@@ -1,6 +1,6 @@
 import unittest
 
-from tools import is_read_only_tool, tool_call_to_bridge_command
+from tools import convert_blueprint_placements, is_read_only_tool, tool_call_to_bridge_command
 
 
 class ToolV2BTests(unittest.TestCase):
@@ -9,6 +9,7 @@ class ToolV2BTests(unittest.TestCase):
         self.assertTrue(is_read_only_tool("list_build_options"))
         self.assertTrue(is_read_only_tool("get_build_info"))
         self.assertTrue(is_read_only_tool("list_growable_plants"))
+        self.assertTrue(is_read_only_tool("check_build_placements"))
         self.assertFalse(is_read_only_tool("create_stockpile"))
 
     def test_create_stockpile_mapping(self) -> None:
@@ -21,20 +22,19 @@ class ToolV2BTests(unittest.TestCase):
         )
 
     def test_place_blueprints_mapping(self) -> None:
+        placements = [
+            {
+                "build_def": "Wall",
+                "x": 20,
+                "z": 21,
+                "rotation": "North",
+                "stuff_def": "WoodLog",
+            }
+        ]
         self.assertEqual(
             tool_call_to_bridge_command(
                 "place_blueprints",
-                {
-                    "placements": [
-                        {
-                            "build_def": "Wall",
-                            "x": 20,
-                            "z": 21,
-                            "rotation": "North",
-                            "stuff_def": "WoodLog",
-                        }
-                    ]
-                },
+                {"placements": placements},
             ),
             {
                 "command": "placeBlueprints",
@@ -48,6 +48,18 @@ class ToolV2BTests(unittest.TestCase):
                     }
                 ],
             },
+        )
+        self.assertEqual(
+            convert_blueprint_placements(placements),
+            [
+                {
+                    "buildDef": "Wall",
+                    "x": 20,
+                    "z": 21,
+                    "rotation": "North",
+                    "stuffDef": "WoodLog",
+                }
+            ],
         )
 
     def test_zone_and_cancel_mappings(self) -> None:

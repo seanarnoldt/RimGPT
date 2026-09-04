@@ -158,6 +158,12 @@ namespace RimGPT
                     return;
                 }
 
+                if (method == "POST" && path == "/build/check")
+                {
+                    HandleBuildCheck(context);
+                    return;
+                }
+
                 if (method == "GET" && path == "/growable-plants")
                 {
                     HandleGrowablePlants(context);
@@ -332,6 +338,37 @@ namespace RimGPT
             RimGPTReadRequest request = new RimGPTReadRequest
             {
                 Type = RimGPTReadRequestType.GrowablePlants
+            };
+            int statusCode;
+            string json = RimGPTReadRequestQueue.EnqueueAndWait(request, out statusCode);
+            WriteJson(context.Response, statusCode, json);
+        }
+
+        private static void HandleBuildCheck(HttpListenerContext context)
+        {
+            string body;
+            using (StreamReader reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding))
+            {
+                body = reader.ReadToEnd();
+            }
+
+            System.Collections.Generic.List<RimGPTBlueprintPlacement> placements;
+            if (!TryReadPlacements(body, out placements))
+            {
+                WriteJson(context.Response, 400, "{\"error\":\"missingPlacements\"}");
+                return;
+            }
+
+            if (placements.Count > 100)
+            {
+                WriteJson(context.Response, 400, "{\"error\":\"tooManyPlacements\"}");
+                return;
+            }
+
+            RimGPTReadRequest request = new RimGPTReadRequest
+            {
+                Type = RimGPTReadRequestType.CheckBuildPlacements,
+                Placements = placements
             };
             int statusCode;
             string json = RimGPTReadRequestQueue.EnqueueAndWait(request, out statusCode);

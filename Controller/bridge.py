@@ -62,6 +62,9 @@ class RimWorldBridge:
     def get_build_info(self, def_name: str) -> dict[str, Any]:
         return self._request_json("GET", "/build/info", params={"defName": def_name})
 
+    def check_build_placements(self, placements: list[dict[str, Any]]) -> dict[str, Any]:
+        return self._request_json("POST", "/build/check", json={"placements": placements})
+
     def list_growable_plants(self) -> dict[str, Any]:
         return self._request_json("GET", "/growable-plants")
 

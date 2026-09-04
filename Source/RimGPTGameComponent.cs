@@ -64,6 +64,9 @@ namespace RimGPT
                         case RimGPTReadRequestType.GrowablePlants:
                             json = RimGPTCatalogJson.BuildGrowablePlantsJson();
                             break;
+                        case RimGPTReadRequestType.CheckBuildPlacements:
+                            json = RimGPTCatalogJson.BuildCheckBuildPlacementsJson(request.Placements);
+                            break;
                         default:
                             RimGPTReadRequestQueue.CompleteFailure(request, "unsupportedReadRequest");
                             continue;

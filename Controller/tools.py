@@ -60,6 +60,35 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "type": "function",
+        "name": "check_build_placements",
+        "description": "Read-only validation for up to 100 planned construction blueprints using normal RimWorld placement rules. Use this before committing large place_blueprints batches, especially on mixed terrain where Light/Medium/Heavy terrain support may vary.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "placements": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "build_def": {"type": "string"},
+                            "x": {"type": "integer"},
+                            "z": {"type": "integer"},
+                            "rotation": {"type": "string", "enum": ["North", "East", "South", "West"]},
+                            "stuff_def": {"type": ["string", "null"]},
+                        },
+                        "required": ["build_def", "x", "z", "rotation", "stuff_def"],
+                        "additionalProperties": False,
+                    },
+                }
+            },
+            "required": ["placements"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
         "name": "set_speed",
         "description": "Set RimWorld game speed. Use 0 for paused, 1 for normal, 2 for fast, and 3 for superfast.",
         "strict": True,
@@ -463,11 +492,24 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 
-READ_ONLY_TOOLS = {"inspect_map", "list_build_options", "get_build_info", "list_growable_plants"}
+READ_ONLY_TOOLS = {"inspect_map", "list_build_options", "get_build_info", "list_growable_plants", "check_build_placements"}
 
 
 def is_read_only_tool(name: str) -> bool:
     return name in READ_ONLY_TOOLS
+
+
+def convert_blueprint_placements(placements: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "buildDef": item["build_def"],
+            "x": item["x"],
+            "z": item["z"],
+            "rotation": item["rotation"],
+            "stuffDef": item.get("stuff_def"),
+        }
+        for item in placements
+    ]
 
 
 def tool_call_to_bridge_command(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -547,16 +589,7 @@ def tool_call_to_bridge_command(name: str, arguments: dict[str, Any]) -> dict[st
     if name == "place_blueprints":
         return {
             "command": "placeBlueprints",
-            "placements": [
-                {
-                    "buildDef": item["build_def"],
-                    "x": item["x"],
-                    "z": item["z"],
-                    "rotation": item["rotation"],
-                    "stuffDef": item.get("stuff_def"),
-                }
-                for item in arguments["placements"]
-            ],
+            "placements": convert_blueprint_placements(arguments["placements"]),
         }
     if name == "cancel_at":
         return {"command": "cancelAt", "x": arguments["x"], "z": arguments["z"]}

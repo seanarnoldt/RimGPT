@@ -182,13 +182,53 @@ namespace RimGPT
             StringBuilder json = new StringBuilder(160);
             json.Append("{");
             WriteString(json, "terrain", terrain != null ? terrain.defName : null, false);
+            WriteString(json, "terrainLabel", terrain != null ? terrain.label : null, true);
             WriteFloat(json, "fertility", terrain != null ? terrain.fertility : 0f, true);
             WriteBool(json, "walkable", walkable, true);
             WriteBool(json, "buildable", walkable && edifice == null && mineable == null, true);
             WriteBool(json, "roofed", roofed, true);
             WriteBool(json, "water", water, true);
+            WriteAffordances(json, map, cell, true);
             json.Append("}");
             return json.ToString();
+        }
+
+        private static void WriteAffordances(StringBuilder json, Map map, IntVec3 cell, bool comma)
+        {
+            WriteName(json, "affordances", comma);
+            json.Append("[");
+            bool wrote = false;
+            List<TerrainAffordanceDef> affordances = null;
+            try
+            {
+                affordances = cell.GetAffordances(map);
+            }
+            catch
+            {
+                TerrainDef terrain = cell.GetTerrain(map);
+                affordances = terrain != null ? terrain.affordances : null;
+            }
+
+            if (affordances != null)
+            {
+                for (int i = 0; i < affordances.Count; i++)
+                {
+                    TerrainAffordanceDef affordance = affordances[i];
+                    if (affordance == null)
+                    {
+                        continue;
+                    }
+
+                    if (wrote)
+                    {
+                        json.Append(",");
+                    }
+
+                    json.Append("\"").Append(RimGPTJson.Escape(affordance.defName)).Append("\"");
+                    wrote = true;
+                }
+            }
+            json.Append("]");
         }
 
         private static void WriteTerrainRun(StringBuilder json, int x, int len, string cellJson, bool comma)

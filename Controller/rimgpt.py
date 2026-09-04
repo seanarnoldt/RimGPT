@@ -5,7 +5,13 @@ import sys
 
 from dotenv import load_dotenv
 
-from agent_controller import AgentController
+from agent_controller import (
+    DEFAULT_MAX_TOOL_ROUNDS,
+    DEFAULT_MAX_TOTAL_TOOL_CALLS,
+    DEFAULT_MAX_WRITE_COMMANDS,
+    DEFAULT_REPEATED_FAILED_CALL_LIMIT,
+    AgentController,
+)
 from bridge import RimWorldBridge, RimWorldBridgeError
 
 
@@ -24,8 +30,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-tool-rounds",
         type=int,
-        default=4,
+        default=DEFAULT_MAX_TOOL_ROUNDS,
         help="Maximum model tool-call rounds before stopping.",
+    )
+    parser.add_argument(
+        "--max-total-tool-calls",
+        type=int,
+        default=DEFAULT_MAX_TOTAL_TOOL_CALLS,
+        help="Maximum total model tool calls per decision cycle.",
+    )
+    parser.add_argument(
+        "--max-write-commands",
+        type=int,
+        default=DEFAULT_MAX_WRITE_COMMANDS,
+        help="Maximum submitted write commands per decision cycle.",
+    )
+    parser.add_argument(
+        "--repeated-failed-call-limit",
+        type=int,
+        default=DEFAULT_REPEATED_FAILED_CALL_LIMIT,
+        help="Terminate after this many substantially identical failed calls.",
     )
     return parser.parse_args()
 
@@ -38,6 +62,19 @@ def main() -> int:
         print("[ERROR] OPENAI_API_KEY is not set")
         return 2
 
+    if args.max_tool_rounds < 1:
+        print("[ERROR] --max-tool-rounds must be at least 1")
+        return 2
+    if args.max_total_tool_calls < 1:
+        print("[ERROR] --max-total-tool-calls must be at least 1")
+        return 2
+    if args.max_write_commands < 1:
+        print("[ERROR] --max-write-commands must be at least 1")
+        return 2
+    if args.repeated_failed_call_limit < 1:
+        print("[ERROR] --repeated-failed-call-limit must be at least 1")
+        return 2
+
     model = os.environ.get("RIMGPT_MODEL", DEFAULT_MODEL)
     bridge = RimWorldBridge(args.bridge_url)
     controller = AgentController(
@@ -45,6 +82,9 @@ def main() -> int:
         model=model,
         dry_run=args.dry_run,
         max_tool_rounds=args.max_tool_rounds,
+        max_total_tool_calls=args.max_total_tool_calls,
+        max_write_commands=args.max_write_commands,
+        repeated_failed_call_limit=args.repeated_failed_call_limit,
     )
 
     try:
