@@ -50,37 +50,15 @@ namespace RimGPT
             {
                 try
                 {
-                    ExecuteCommand(command);
-                    Log.Message("[RimGPT] Executed command: " + command.CommandName);
+                    RimGPTCommandExecutionResult result = RimGPTCommandExecutor.Execute(command);
+                    RimGPTCommandQueue.Complete(command, result.Success, result.Message);
+                    Log.Message("[RimGPT] Executed command: " + command.CommandName + " (" + command.CommandId + "): " + (result.Success ? "success" : "failure"));
                 }
                 catch (Exception ex)
                 {
-                    Log.Error("[RimGPT] Exception executing command '" + command.CommandName + "': " + ex);
+                    RimGPTCommandQueue.Complete(command, false, "Exception while executing command");
+                    Log.Error("[RimGPT] Exception executing command '" + command.CommandName + "' (" + command.CommandId + "): " + ex);
                 }
-            }
-        }
-
-        private static void ExecuteCommand(RimGPTCommand command)
-        {
-            if (Find.TickManager == null)
-            {
-                Log.Warning("[RimGPT] Ignoring command because TickManager is not available: " + command.CommandName);
-                return;
-            }
-
-            switch (command.Type)
-            {
-                case RimGPTCommandType.Pause:
-                    Find.TickManager.CurTimeSpeed = TimeSpeed.Paused;
-                    break;
-                case RimGPTCommandType.Unpause:
-                    if (Find.TickManager.CurTimeSpeed == TimeSpeed.Paused)
-                    {
-                        Find.TickManager.CurTimeSpeed = TimeSpeed.Normal;
-                    }
-                    break;
-                default:
-                    throw new InvalidOperationException("Unsupported command type: " + command.Type);
             }
         }
 
