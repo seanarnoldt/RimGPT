@@ -4,6 +4,7 @@ namespace RimGPT
 {
     public sealed class RimGPTStateModel
     {
+        public RimGPTSnapshotState Snapshot;
         public RimGPTGameState Game;
         public RimGPTColonyState Colony;
         public List<RimGPTColonistState> Colonists;
@@ -13,6 +14,13 @@ namespace RimGPT
         public List<RimGPTThreatState> Threats;
         public string MapJson;
         public string BuildingsJson;
+    }
+
+    public sealed class RimGPTSnapshotState
+    {
+        public long Version;
+        public string CapturedAtUtc;
+        public int TicksGame;
     }
 
     public sealed class RimGPTGameState

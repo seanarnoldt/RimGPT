@@ -25,7 +25,7 @@ namespace RimGPT
                     {
                         Find.TickManager.CurTimeSpeed = TimeSpeed.Normal;
                     }
-                    return RimGPTCommandExecutionResult.Succeeded("Game unpaused");
+                    return RimGPTCommandExecutionResult.Succeeded("Game unpaused", SpeedDataJson(1));
                 case RimGPTCommandType.SetSpeed:
                     return SetSpeed(command.Speed);
                 case RimGPTCommandType.Draft:
@@ -88,16 +88,16 @@ namespace RimGPT
             {
                 case 0:
                     Find.TickManager.CurTimeSpeed = TimeSpeed.Paused;
-                    return RimGPTCommandExecutionResult.Succeeded("Game paused");
+                    return RimGPTCommandExecutionResult.Succeeded("Game paused", SpeedDataJson(0));
                 case 1:
                     Find.TickManager.CurTimeSpeed = TimeSpeed.Normal;
-                    return RimGPTCommandExecutionResult.Succeeded("Speed set to normal");
+                    return RimGPTCommandExecutionResult.Succeeded("Speed set to normal", SpeedDataJson(1));
                 case 2:
                     Find.TickManager.CurTimeSpeed = TimeSpeed.Fast;
-                    return RimGPTCommandExecutionResult.Succeeded("Speed set to fast");
+                    return RimGPTCommandExecutionResult.Succeeded("Speed set to fast", SpeedDataJson(2));
                 case 3:
                     Find.TickManager.CurTimeSpeed = TimeSpeed.Superfast;
-                    return RimGPTCommandExecutionResult.Succeeded("Speed set to superfast");
+                    return RimGPTCommandExecutionResult.Succeeded("Speed set to superfast", SpeedDataJson(3));
                 default:
                     return RimGPTCommandExecutionResult.Failure("Unsupported speed");
             }
@@ -264,7 +264,10 @@ namespace RimGPT
                 affected++;
             }
 
-            return RimGPTCommandExecutionResult.Succeeded("Allowed " + affected + " visible forbidden thing(s)");
+            return RimGPTCommandExecutionResult.Succeeded(
+                "Allowed " + affected + " visible forbidden thing(s)",
+                "{\"affected\":" + affected.ToString(CultureInfo.InvariantCulture) + "}"
+            );
         }
 
         private static RimGPTCommandExecutionResult SetResearch(string researchDefName)
@@ -585,8 +588,15 @@ namespace RimGPT
                 return RimGPTCommandExecutionResult.Failure("No valid visible growing-zone cells were available");
             }
 
-            string data = "{\"zoneId\":\"" + RimGPTJson.Escape(RimGPTSpatialJson.ZoneId(zone)) + "\",\"cellsAdded\":" + added.ToString(CultureInfo.InvariantCulture) + "}";
+            ThingDef plant = zone.GetPlantDefToGrow();
+            string data = "{\"zoneId\":\"" + RimGPTJson.Escape(RimGPTSpatialJson.ZoneId(zone)) + "\",\"cellsAdded\":" + added.ToString(CultureInfo.InvariantCulture) + ",\"plantDef\":";
+            data += plant != null ? "\"" + RimGPTJson.Escape(plant.defName) + "\"}" : "null}";
             return RimGPTCommandExecutionResult.Succeeded("Growing zone created", data);
+        }
+
+        private static string SpeedDataJson(int requestedSpeed)
+        {
+            return "{\"requestedSpeed\":" + requestedSpeed.ToString(CultureInfo.InvariantCulture) + "}";
         }
 
         private static RimGPTCommandExecutionResult SetGrowingZonePlant(string zoneId, string plantDefName)

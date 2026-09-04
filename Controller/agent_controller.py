@@ -65,6 +65,8 @@ class AgentController:
         self.max_tool_rounds = max_tool_rounds
         self.client = OpenAI()
         self.uncertain_commands: dict[str, dict[str, Any]] = {}
+        self.current_state: dict[str, Any] | None = None
+        self._last_batch_had_write = False
 
     def run_once(self) -> None:
         print("[STATE] Checking RimGPT bridge health")
@@ -72,6 +74,7 @@ class AgentController:
         print(f"[STATE] Bridge health: {health.get('status')} ({health.get('bridge')})")
 
         state = self.bridge.get_state()
+        self.current_state = state
         print(f"[STATE] {summarize_state(state)}")
 
         print(f"[MODEL] Requesting one decision cycle from {self.model}")
@@ -112,9 +115,10 @@ class AgentController:
                 return current
 
             print(f"[MODEL] Tool-call round {round_index + 1}: {len(tool_calls)} call(s)")
+            round_start_version = snapshot_version(self.current_state)
             outputs = self._execute_tool_call_batch(tool_calls)
             outputs.extend(self._reconcile_uncertain_commands())
-            post_action_state = self._fresh_state_message()
+            post_action_state = self._fresh_state_message(round_start_version, self._last_batch_had_write and not self.dry_run)
 
             print("[MODEL] Sending tool results and fresh state back to model")
             current = self.client.responses.create(
@@ -132,6 +136,7 @@ class AgentController:
     def _execute_tool_call_batch(self, tool_calls: list[Any]) -> list[dict[str, Any]]:
         prepared: list[dict[str, Any]] = []
         outputs: list[dict[str, Any] | None] = [None] * len(tool_calls)
+        self._last_batch_had_write = False
 
         for index, call in enumerate(tool_calls):
             name = getattr(call, "name", "")
@@ -181,6 +186,7 @@ class AgentController:
             )
 
         if prepared:
+            self._last_batch_had_write = True
             submitted: list[dict[str, Any]] = []
             by_command_id: dict[str, dict[str, Any]] = {}
 
@@ -330,15 +336,37 @@ class AgentController:
 
         return updates
 
-    def _fresh_state_message(self) -> dict[str, Any]:
+    def _fresh_state_message(self, after_version: int, require_newer: bool) -> dict[str, Any]:
         try:
-            state = self.bridge.get_state()
-            print(f"[STATE] Post-action {summarize_state(state)}")
-            text = (
-                "Fresh authoritative RimWorld state after the attempted actions. "
-                "Use this state, not only action acknowledgements, for your next assessment.\n\n"
-                + json.dumps(state, separators=(",", ":"))
-            )
+            if require_newer:
+                state = self.bridge.wait_for_state_after(after_version, timeout_ms=3000)
+                if state.get("fresh") is False:
+                    stale_state = state.get("state") if isinstance(state.get("state"), dict) else state
+                    self.current_state = stale_state
+                    print(f"[WARNING] No post-command snapshot newer than version {after_version}")
+                    print(f"[STATE] Post-action stale {summarize_state(stale_state)}")
+                    text = (
+                        f"No post-command snapshot newer than version {after_version} was available. "
+                        "This state may be stale; do not treat it as authoritative proof that completed commands failed.\n\n"
+                        + json.dumps(stale_state, separators=(",", ":"))
+                    )
+                else:
+                    self.current_state = state
+                    new_version = snapshot_version(state)
+                    print(f"[STATE] Post-action authoritative version={new_version} {summarize_state(state)}")
+                    text = (
+                        "Fresh authoritative RimWorld state generated after the completed command batch. "
+                        "Use this state, not only action acknowledgements, for your next assessment.\n\n"
+                        + json.dumps(state, separators=(",", ":"))
+                    )
+            else:
+                state = self.bridge.get_state()
+                self.current_state = state
+                print(f"[STATE] Current {summarize_state(state)}")
+                text = (
+                    "Current RimWorld state after a read-only/no-mutation tool round.\n\n"
+                    + json.dumps(state, separators=(",", ":"))
+                )
         except RimWorldBridgeError as exc:
             print(f"[ERROR] Could not retrieve post-action state: {exc}")
             text = f"Fresh RimWorld state could not be retrieved after actions: {exc}"
@@ -383,6 +411,18 @@ def collect_output_text(response: Any) -> str:
             if text:
                 chunks.append(str(text))
     return "\n".join(chunks)
+
+
+def snapshot_version(state: dict[str, Any] | None) -> int:
+    if not isinstance(state, dict):
+        return 0
+    snapshot = state.get("snapshot", {})
+    if not isinstance(snapshot, dict):
+        return 0
+    try:
+        return int(snapshot.get("version") or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def summarize_state(state: dict[str, Any]) -> str:

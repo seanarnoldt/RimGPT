@@ -9,15 +9,21 @@ namespace RimGPT
 {
     public static class RimGPTStateBuilder
     {
-        public static string BuildJson()
+        public static string BuildJson(long snapshotVersion, string capturedAtUtc, int snapshotTicksGame)
         {
             if (Current.Game == null || Find.CurrentMap == null)
             {
-                return "{\"schemaVersion\":1,\"game\":{\"loaded\":false}}";
+                return "{\"schemaVersion\":2,\"snapshot\":{\"version\":" + snapshotVersion + ",\"capturedAtUtc\":\"" + RimGPTJson.Escape(capturedAtUtc) + "\",\"ticksGame\":" + snapshotTicksGame + "},\"game\":{\"loaded\":false}}";
             }
 
             Map map = Find.CurrentMap;
             RimGPTStateModel state = new RimGPTStateModel();
+            state.Snapshot = new RimGPTSnapshotState
+            {
+                Version = snapshotVersion,
+                CapturedAtUtc = capturedAtUtc,
+                TicksGame = snapshotTicksGame
+            };
             state.Game = BuildGameState(map);
             state.Colony = BuildColonyState(map);
             state.Colonists = BuildColonists(map);

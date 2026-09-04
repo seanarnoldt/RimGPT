@@ -55,7 +55,11 @@ python rimgpt.py
 For direct bridge checks while a save is loaded:
 
 ```bash
+curl 'http://127.0.0.1:47831/state'
+curl 'http://127.0.0.1:47831/state?afterVersion=1&timeoutMs=2000'
 curl 'http://127.0.0.1:47831/map/region?minX=100&minZ=100&maxX=130&maxZ=130'
 curl 'http://127.0.0.1:47831/build/options?search=wall'
 curl 'http://127.0.0.1:47831/growable-plants'
 ```
+
+Every `/state` response includes `snapshot.version`, `snapshot.capturedAtUtc`, and `snapshot.ticksGame`. After write-command batches, the controller waits for `/state?afterVersion=<oldVersion>` before treating post-action state as authoritative.

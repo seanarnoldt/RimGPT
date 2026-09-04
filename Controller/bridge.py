@@ -37,6 +37,13 @@ class RimWorldBridge:
     def get_state(self) -> dict[str, Any]:
         return self._request_json("GET", "/state")
 
+    def wait_for_state_after(self, after_version: int, timeout_ms: int = 2000) -> dict[str, Any]:
+        return self._request_json(
+            "GET",
+            "/state",
+            params={"afterVersion": after_version, "timeoutMs": timeout_ms},
+        )
+
     def inspect_map(self, min_x: int, min_z: int, max_x: int, max_z: int) -> dict[str, Any]:
         return self._request_json(
             "GET",

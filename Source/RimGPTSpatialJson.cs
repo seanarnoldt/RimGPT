@@ -401,7 +401,36 @@ namespace RimGPT
             WriteInt(json, "maxHitPoints", thing.MaxHitPoints, true);
             WriteNullableBool(json, "powered", PoweredState(thing), true);
             WriteBool(json, "forbidden", thing.IsForbidden(Faction.OfPlayer), true);
+            WritePlantFields(json, thing);
             json.Append("}");
+        }
+
+        private static void WritePlantFields(StringBuilder json, Thing thing)
+        {
+            Plant plant = thing as Plant;
+            if (plant == null)
+            {
+                return;
+            }
+
+            bool harvestable = SafeBool(delegate { return plant.HarvestableNow; });
+            bool mature = SafeBool(delegate { return plant.def != null && plant.def.plant != null && plant.Growth >= plant.def.plant.harvestMinGrowth; });
+            bool canCut = SafeBool(delegate {
+                Designator_PlantsCut designator = new Designator_PlantsCut();
+                AcceptanceReport report = designator.CanDesignateThing(plant);
+                return report.Accepted;
+            });
+            bool canHarvest = SafeBool(delegate {
+                Designator_PlantsHarvest designator = new Designator_PlantsHarvest();
+                AcceptanceReport report = designator.CanDesignateThing(plant);
+                return report.Accepted;
+            });
+
+            WriteFloat(json, "growth", plant.Growth, true);
+            WriteBool(json, "mature", mature, true);
+            WriteBool(json, "harvestableNow", harvestable, true);
+            WriteBool(json, "canDesignateCut", canCut, true);
+            WriteBool(json, "canDesignateHarvest", canHarvest, true);
         }
 
         private static string ThingType(Thing thing)

@@ -136,7 +136,7 @@ namespace RimGPT
 
                 if (method == "GET" && path == "/state")
                 {
-                    WriteJson(context.Response, 200, RimGPTStateSnapshot.CurrentJson);
+                    HandleState(context);
                     return;
                 }
 
@@ -217,6 +217,41 @@ namespace RimGPT
 
             RimGPTCommandQueue.Enqueue(command);
             WriteJson(context.Response, 202, "{\"accepted\":true,\"commandId\":\"" + RimGPTJson.Escape(command.CommandId) + "\"}");
+        }
+
+        private static void HandleState(HttpListenerContext context)
+        {
+            string afterVersionRaw = context.Request.QueryString["afterVersion"];
+            if (string.IsNullOrEmpty(afterVersionRaw))
+            {
+                WriteJson(context.Response, 200, RimGPTStateSnapshot.CurrentJson);
+                return;
+            }
+
+            long afterVersion;
+            if (!long.TryParse(afterVersionRaw, out afterVersion) || afterVersion < 0)
+            {
+                WriteJson(context.Response, 400, "{\"error\":\"invalidAfterVersion\"}");
+                return;
+            }
+
+            int timeoutMillis = 2000;
+            string timeoutRaw = context.Request.QueryString["timeoutMs"];
+            if (!string.IsNullOrEmpty(timeoutRaw) && (!int.TryParse(timeoutRaw, out timeoutMillis) || timeoutMillis < 0))
+            {
+                WriteJson(context.Response, 400, "{\"error\":\"invalidTimeoutMs\"}");
+                return;
+            }
+
+            string json;
+            bool newer = RimGPTStateSnapshot.TryWaitForNewerJson(afterVersion, timeoutMillis, out json);
+            if (newer)
+            {
+                WriteJson(context.Response, 200, json);
+                return;
+            }
+
+            WriteJson(context.Response, 200, "{\"fresh\":false,\"afterVersion\":" + afterVersion + ",\"currentVersion\":" + RimGPTStateSnapshot.CurrentVersion + ",\"state\":" + json + "}");
         }
 
         private static void HandleCommandStatus(HttpListenerContext context, string path)

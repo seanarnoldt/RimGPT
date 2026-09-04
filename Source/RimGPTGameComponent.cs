@@ -24,7 +24,12 @@ namespace RimGPT
 
         public override void GameComponentUpdate()
         {
-            ProcessQueuedCommands();
+            bool commandsProcessed = ProcessQueuedCommands();
+            if (commandsProcessed)
+            {
+                nextSnapshotUpdateMillis = Environment.TickCount + 1000;
+            }
+
             ProcessReadRequests();
 
             int now = Environment.TickCount;
@@ -86,7 +91,7 @@ namespace RimGPT
             UpdateStateSnapshot();
         }
 
-        private static void ProcessQueuedCommands()
+        private static bool ProcessQueuedCommands()
         {
             if (!dispatcherActiveLogged)
             {
@@ -95,6 +100,7 @@ namespace RimGPT
             }
 
             int drained = 0;
+            System.Collections.Generic.List<CommandCompletion> completions = new System.Collections.Generic.List<CommandCompletion>();
             RimGPTCommand command;
             while (drained < MaxCommandsPerFrame && RimGPTCommandQueue.TryDequeue(out command))
             {
@@ -104,20 +110,29 @@ namespace RimGPT
                     int queuedForMillis = Environment.TickCount - command.QueuedAtMillis;
                     Log.Message("[RimGPT] Executing command " + command.CommandId + ", queued for " + queuedForMillis + " ms");
                     RimGPTCommandExecutionResult result = RimGPTCommandExecutor.Execute(command);
-                    RimGPTCommandQueue.Complete(command, result.Success, result.Message, result.DataJson);
-                    Log.Message("[RimGPT] Executed command: " + command.CommandName + " (" + command.CommandId + "): " + (result.Success ? "success" : "failure"));
+                    completions.Add(new CommandCompletion(command, result.Success, result.Message, result.DataJson));
                 }
                 catch (Exception ex)
                 {
-                    RimGPTCommandQueue.Complete(command, false, "Exception while executing command");
+                    completions.Add(new CommandCompletion(command, false, "Exception while executing command", null));
                     Log.Error("[RimGPT] Exception executing command '" + command.CommandName + "' (" + command.CommandId + "): " + ex);
                 }
             }
 
             if (drained > 0)
             {
+                UpdateStateSnapshot();
+                for (int i = 0; i < completions.Count; i++)
+                {
+                    CommandCompletion completion = completions[i];
+                    RimGPTCommandQueue.Complete(completion.Command, completion.Success, completion.Message, completion.DataJson);
+                    Log.Message("[RimGPT] Executed command: " + completion.Command.CommandName + " (" + completion.Command.CommandId + "): " + (completion.Success ? "success" : "failure"));
+                }
+
                 Log.Message("[RimGPT] Drained " + drained + " command(s) this frame");
             }
+
+            return drained > 0;
         }
 
         private static void UpdateStateSnapshot()
@@ -129,6 +144,22 @@ namespace RimGPT
             catch (Exception ex)
             {
                 Log.Error("[RimGPT] Exception updating state snapshot: " + ex);
+            }
+        }
+
+        private sealed class CommandCompletion
+        {
+            public RimGPTCommand Command;
+            public bool Success;
+            public string Message;
+            public string DataJson;
+
+            public CommandCompletion(RimGPTCommand command, bool success, string message, string dataJson)
+            {
+                Command = command;
+                Success = success;
+                Message = message;
+                DataJson = dataJson;
             }
         }
     }

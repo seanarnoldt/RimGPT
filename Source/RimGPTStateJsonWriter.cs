@@ -9,7 +9,8 @@ namespace RimGPT
         public static string Write(RimGPTStateModel state)
         {
             StringBuilder json = new StringBuilder(8192);
-            json.Append("{\"schemaVersion\":1");
+            json.Append("{\"schemaVersion\":2");
+            WriteSnapshot(json, state.Snapshot);
             WriteGame(json, state.Game);
             WriteColony(json, state.Colony);
             WriteColonists(json, state.Colonists);
@@ -21,6 +22,21 @@ namespace RimGPT
             json.Append(",\"buildings\":").Append(string.IsNullOrEmpty(state.BuildingsJson) ? "[]" : state.BuildingsJson);
             json.Append("}");
             return json.ToString();
+        }
+
+        private static void WriteSnapshot(StringBuilder json, RimGPTSnapshotState snapshot)
+        {
+            json.Append(",\"snapshot\":{");
+            if (snapshot == null)
+            {
+                json.Append("\"version\":0,\"capturedAtUtc\":null,\"ticksGame\":0}");
+                return;
+            }
+
+            json.Append("\"version\":").Append(snapshot.Version.ToString(CultureInfo.InvariantCulture));
+            WriteStringField(json, "capturedAtUtc", snapshot.CapturedAtUtc, true);
+            WriteIntField(json, "ticksGame", snapshot.TicksGame, true);
+            json.Append("}");
         }
 
         private static void WriteGame(StringBuilder json, RimGPTGameState game)
