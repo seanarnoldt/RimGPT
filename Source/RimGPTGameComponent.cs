@@ -7,6 +7,7 @@ namespace RimGPT
     public sealed class RimGPTGameComponent : GameComponent
     {
         private const int MaxCommandsPerFrame = 32;
+        private const int MaxReadRequestsPerFrame = 8;
         private int nextSnapshotUpdateMillis;
         private static bool dispatcherActiveLogged;
 
@@ -24,12 +25,52 @@ namespace RimGPT
         public override void GameComponentUpdate()
         {
             ProcessQueuedCommands();
+            ProcessReadRequests();
 
             int now = Environment.TickCount;
             if (now >= nextSnapshotUpdateMillis)
             {
                 UpdateStateSnapshot();
                 nextSnapshotUpdateMillis = now + 1000;
+            }
+        }
+
+        private static void ProcessReadRequests()
+        {
+            int drained = 0;
+            RimGPTReadRequest request;
+            while (drained < MaxReadRequestsPerFrame && RimGPTReadRequestQueue.TryDequeue(out request))
+            {
+                drained++;
+                try
+                {
+                    string json;
+                    switch (request.Type)
+                    {
+                        case RimGPTReadRequestType.MapRegion:
+                            json = RimGPTSpatialJson.BuildMapRegionJson(request.MinX, request.MinZ, request.MaxX, request.MaxZ);
+                            break;
+                        case RimGPTReadRequestType.BuildOptions:
+                            json = RimGPTCatalogJson.BuildBuildOptionsJson(request.Category, request.Search);
+                            break;
+                        case RimGPTReadRequestType.BuildInfo:
+                            json = RimGPTCatalogJson.BuildBuildInfoJson(request.DefName);
+                            break;
+                        case RimGPTReadRequestType.GrowablePlants:
+                            json = RimGPTCatalogJson.BuildGrowablePlantsJson();
+                            break;
+                        default:
+                            RimGPTReadRequestQueue.CompleteFailure(request, "unsupportedReadRequest");
+                            continue;
+                    }
+
+                    RimGPTReadRequestQueue.CompleteSuccess(request, json);
+                }
+                catch (Exception ex)
+                {
+                    RimGPTReadRequestQueue.CompleteFailure(request, "readRequestFailed");
+                    Log.Error("[RimGPT] Exception processing read request '" + request.Type + "': " + ex);
+                }
             }
         }
 
@@ -63,7 +104,7 @@ namespace RimGPT
                     int queuedForMillis = Environment.TickCount - command.QueuedAtMillis;
                     Log.Message("[RimGPT] Executing command " + command.CommandId + ", queued for " + queuedForMillis + " ms");
                     RimGPTCommandExecutionResult result = RimGPTCommandExecutor.Execute(command);
-                    RimGPTCommandQueue.Complete(command, result.Success, result.Message);
+                    RimGPTCommandQueue.Complete(command, result.Success, result.Message, result.DataJson);
                     Log.Message("[RimGPT] Executed command: " + command.CommandName + " (" + command.CommandId + "): " + (result.Success ? "success" : "failure"));
                 }
                 catch (Exception ex)

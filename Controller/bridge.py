@@ -37,6 +37,27 @@ class RimWorldBridge:
     def get_state(self) -> dict[str, Any]:
         return self._request_json("GET", "/state")
 
+    def inspect_map(self, min_x: int, min_z: int, max_x: int, max_z: int) -> dict[str, Any]:
+        return self._request_json(
+            "GET",
+            "/map/region",
+            params={"minX": min_x, "minZ": min_z, "maxX": max_x, "maxZ": max_z},
+        )
+
+    def list_build_options(self, category: str | None = None, search: str | None = None) -> dict[str, Any]:
+        params: dict[str, Any] = {}
+        if category:
+            params["category"] = category
+        if search:
+            params["search"] = search
+        return self._request_json("GET", "/build/options", params=params)
+
+    def get_build_info(self, def_name: str) -> dict[str, Any]:
+        return self._request_json("GET", "/build/info", params={"defName": def_name})
+
+    def list_growable_plants(self) -> dict[str, Any]:
+        return self._request_json("GET", "/growable-plants")
+
     def send_command(self, command: dict[str, Any]) -> dict[str, Any]:
         return self._request_json("POST", "/command", json=command)
 

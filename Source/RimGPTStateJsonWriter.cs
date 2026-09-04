@@ -17,6 +17,8 @@ namespace RimGPT
             WriteMapThings(json, state.MapThings);
             WriteResearch(json, state.Research);
             WriteThreats(json, state.Threats);
+            json.Append(",\"map\":").Append(string.IsNullOrEmpty(state.MapJson) ? "null" : state.MapJson);
+            json.Append(",\"buildings\":").Append(string.IsNullOrEmpty(state.BuildingsJson) ? "[]" : state.BuildingsJson);
             json.Append("}");
             return json.ToString();
         }

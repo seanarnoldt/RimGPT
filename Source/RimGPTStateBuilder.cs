@@ -25,6 +25,8 @@ namespace RimGPT
             state.MapThings = BuildMapThings(map);
             state.Research = BuildResearch();
             state.Threats = BuildThreats(map);
+            state.MapJson = RimGPTSpatialJson.BuildMapOverviewJson(map);
+            state.BuildingsJson = RimGPTSpatialJson.BuildBuildingsJson(map);
 
             return RimGPTStateJsonWriter.Write(state);
         }

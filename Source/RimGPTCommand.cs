@@ -17,7 +17,16 @@ namespace RimGPT
         DesignateMine,
         DesignateCut,
         DesignateHarvest,
-        DesignateHunt
+        DesignateHunt,
+        CreateStockpile,
+        SetStockpilePriority,
+        SetStockpilePreset,
+        CreateGrowingZone,
+        SetGrowingZonePlant,
+        PlaceBlueprint,
+        PlaceBlueprints,
+        CancelAt,
+        DesignateDeconstruct
     }
 
     public sealed class RimGPTCommand
@@ -34,6 +43,18 @@ namespace RimGPT
         public string ThingId { get; set; }
         public string TargetId { get; set; }
         public string ResearchDef { get; set; }
+        public int MinX { get; set; }
+        public int MinZ { get; set; }
+        public int MaxX { get; set; }
+        public int MaxZ { get; set; }
+        public string ZoneId { get; set; }
+        public string StoragePriority { get; set; }
+        public string Preset { get; set; }
+        public string PlantDef { get; set; }
+        public string BuildDef { get; set; }
+        public string StuffDef { get; set; }
+        public string Rotation { get; set; }
+        public System.Collections.Generic.List<RimGPTBlueprintPlacement> Placements { get; set; }
 
         public RimGPTCommand(string commandId, RimGPTCommandType type)
         {
@@ -79,10 +100,37 @@ namespace RimGPT
                         return "designateHarvest";
                     case RimGPTCommandType.DesignateHunt:
                         return "designateHunt";
+                    case RimGPTCommandType.CreateStockpile:
+                        return "createStockpile";
+                    case RimGPTCommandType.SetStockpilePriority:
+                        return "setStockpilePriority";
+                    case RimGPTCommandType.SetStockpilePreset:
+                        return "setStockpilePreset";
+                    case RimGPTCommandType.CreateGrowingZone:
+                        return "createGrowingZone";
+                    case RimGPTCommandType.SetGrowingZonePlant:
+                        return "setGrowingZonePlant";
+                    case RimGPTCommandType.PlaceBlueprint:
+                        return "placeBlueprint";
+                    case RimGPTCommandType.PlaceBlueprints:
+                        return "placeBlueprints";
+                    case RimGPTCommandType.CancelAt:
+                        return "cancelAt";
+                    case RimGPTCommandType.DesignateDeconstruct:
+                        return "designateDeconstruct";
                     default:
                         return "unknown";
                 }
             }
         }
+    }
+
+    public sealed class RimGPTBlueprintPlacement
+    {
+        public string BuildDef { get; set; }
+        public int X { get; set; }
+        public int Z { get; set; }
+        public string Rotation { get; set; }
+        public string StuffDef { get; set; }
     }
 }

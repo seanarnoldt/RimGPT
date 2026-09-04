@@ -4,6 +4,62 @@ from typing import Any
 TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
+        "name": "inspect_map",
+        "description": "Read-only inspection of a bounded current-map RimWorld x/z rectangle, max about 40x40 cells. Use this before important construction, zones, mining, or growing decisions. Hidden/fogged contents are not exposed.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "min_x": {"type": "integer"},
+                "min_z": {"type": "integer"},
+                "max_x": {"type": "integer"},
+                "max_z": {"type": "integer"},
+            },
+            "required": ["min_x", "min_z", "max_x", "max_z"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "list_build_options",
+        "description": "Read-only bounded catalog of buildable defs currently available in normal Architect/build menus. Use category or search filters when possible; do not invent buildDef or stuffDef names.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "category": {"type": ["string", "null"], "description": "Optional designation category defName/label filter."},
+                "search": {"type": ["string", "null"], "description": "Optional defName/label search string, such as wall, door, bed, power."},
+            },
+            "required": ["category", "search"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "get_build_info",
+        "description": "Read-only detailed build info for one exact buildDef from list_build_options. Use before placement when costs, size, or stuffability are uncertain.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {"def_name": {"type": "string"}},
+            "required": ["def_name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "list_growable_plants",
+        "description": "Read-only catalog of sowable plant defs available to growing zones, including fertility and skill constraints where RimWorld exposes them.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
         "name": "set_speed",
         "description": "Set RimWorld game speed. Use 0 for paused, 1 for normal, 2 for fast, and 3 for superfast.",
         "strict": True,
@@ -251,7 +307,167 @@ TOOLS: list[dict[str, Any]] = [
             "additionalProperties": False,
         },
     },
+    {
+        "type": "function",
+        "name": "create_stockpile",
+        "description": "Create a normal stockpile zone over visible valid cells in a current-map x/z rectangle. Does not overlap existing zones. Returns a zoneId for later stockpile configuration.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "min_x": {"type": "integer"},
+                "min_z": {"type": "integer"},
+                "max_x": {"type": "integer"},
+                "max_z": {"type": "integer"},
+            },
+            "required": ["min_x", "min_z", "max_x", "max_z"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "set_stockpile_priority",
+        "description": "Set normal RimWorld storage priority for a stockpile zone ID returned by state/create_stockpile. Valid priorities: Low, Normal, Preferred, Important, Critical.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "zone_id": {"type": "string"},
+                "priority": {"type": "string", "enum": ["Low", "Normal", "Preferred", "Important", "Critical"]},
+            },
+            "required": ["zone_id", "priority"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "set_stockpile_preset",
+        "description": "Set a bounded stockpile storage filter preset. Valid presets: all, food, rawResources, manufactured, weapons, apparel, chunks, corpses, nothing.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "zone_id": {"type": "string"},
+                "preset": {"type": "string", "enum": ["all", "food", "rawResources", "manufactured", "weapons", "apparel", "chunks", "corpses", "nothing"]},
+            },
+            "required": ["zone_id", "preset"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "create_growing_zone",
+        "description": "Create a normal growing zone on visible currently plantable cells in a current-map x/z rectangle. Use inspect_map and list_growable_plants first when terrain or plant def is uncertain.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "min_x": {"type": "integer"},
+                "min_z": {"type": "integer"},
+                "max_x": {"type": "integer"},
+                "max_z": {"type": "integer"},
+            },
+            "required": ["min_x", "min_z", "max_x", "max_z"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "set_growing_zone_plant",
+        "description": "Set a growing zone plant by exact plantDef from list_growable_plants. The plant must be normally sowable in at least part of the zone.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "zone_id": {"type": "string"},
+                "plant_def": {"type": "string"},
+            },
+            "required": ["zone_id", "plant_def"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "place_blueprint",
+        "description": "Place one normal RimWorld construction blueprint at current-map x/z coordinates. Use exact buildDef from list_build_options. Buildings are not spawned instantly; colonists must construct them. Use stuffDef only when the buildDef is stuffable.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "build_def": {"type": "string"},
+                "x": {"type": "integer"},
+                "z": {"type": "integer"},
+                "rotation": {"type": "string", "enum": ["North", "East", "South", "West"]},
+                "stuff_def": {"type": ["string", "null"]},
+            },
+            "required": ["build_def", "x", "z", "rotation", "stuff_def"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "place_blueprints",
+        "description": "Place up to 100 normal RimWorld construction blueprints in one command. Good for walls/rooms. Per-placement failures are reported; the batch is not atomic.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "placements": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "build_def": {"type": "string"},
+                            "x": {"type": "integer"},
+                            "z": {"type": "integer"},
+                            "rotation": {"type": "string", "enum": ["North", "East", "South", "West"]},
+                            "stuff_def": {"type": ["string", "null"]},
+                        },
+                        "required": ["build_def", "x", "z", "rotation", "stuff_def"],
+                        "additionalProperties": False,
+                    },
+                }
+            },
+            "required": ["placements"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "cancel_at",
+        "description": "Cancel normal player-cancellable blueprints, frames, and designations at a visible current-map x/z cell.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "x": {"type": "integer"},
+                "z": {"type": "integer"},
+            },
+            "required": ["x", "z"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "designate_deconstruct",
+        "description": "Designate a visible player-owned structure for normal deconstruction by stable ThingID. Does not destroy instantly.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {"thing_id": {"type": "string"}},
+            "required": ["thing_id"],
+            "additionalProperties": False,
+        },
+    },
 ]
+
+
+READ_ONLY_TOOLS = {"inspect_map", "list_build_options", "get_build_info", "list_growable_plants"}
+
+
+def is_read_only_tool(name: str) -> bool:
+    return name in READ_ONLY_TOOLS
 
 
 def tool_call_to_bridge_command(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -297,4 +513,53 @@ def tool_call_to_bridge_command(name: str, arguments: dict[str, Any]) -> dict[st
         return {"command": "designateHarvest", "x": arguments["x"], "z": arguments["z"]}
     if name == "designate_hunt":
         return {"command": "designateHunt", "thingId": arguments["thing_id"]}
+    if name == "create_stockpile":
+        return {
+            "command": "createStockpile",
+            "minX": arguments["min_x"],
+            "minZ": arguments["min_z"],
+            "maxX": arguments["max_x"],
+            "maxZ": arguments["max_z"],
+        }
+    if name == "set_stockpile_priority":
+        return {"command": "setStockpilePriority", "zoneId": arguments["zone_id"], "priority": arguments["priority"]}
+    if name == "set_stockpile_preset":
+        return {"command": "setStockpilePreset", "zoneId": arguments["zone_id"], "preset": arguments["preset"]}
+    if name == "create_growing_zone":
+        return {
+            "command": "createGrowingZone",
+            "minX": arguments["min_x"],
+            "minZ": arguments["min_z"],
+            "maxX": arguments["max_x"],
+            "maxZ": arguments["max_z"],
+        }
+    if name == "set_growing_zone_plant":
+        return {"command": "setGrowingZonePlant", "zoneId": arguments["zone_id"], "plantDef": arguments["plant_def"]}
+    if name == "place_blueprint":
+        return {
+            "command": "placeBlueprint",
+            "buildDef": arguments["build_def"],
+            "x": arguments["x"],
+            "z": arguments["z"],
+            "rotation": arguments["rotation"],
+            "stuffDef": arguments.get("stuff_def"),
+        }
+    if name == "place_blueprints":
+        return {
+            "command": "placeBlueprints",
+            "placements": [
+                {
+                    "buildDef": item["build_def"],
+                    "x": item["x"],
+                    "z": item["z"],
+                    "rotation": item["rotation"],
+                    "stuffDef": item.get("stuff_def"),
+                }
+                for item in arguments["placements"]
+            ],
+        }
+    if name == "cancel_at":
+        return {"command": "cancelAt", "x": arguments["x"], "z": arguments["z"]}
+    if name == "designate_deconstruct":
+        return {"command": "designateDeconstruct", "thingId": arguments["thing_id"]}
     raise ValueError(f"Unsupported tool call: {name}")

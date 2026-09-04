@@ -140,6 +140,30 @@ namespace RimGPT
                     return;
                 }
 
+                if (method == "GET" && path == "/map/region")
+                {
+                    HandleMapRegion(context);
+                    return;
+                }
+
+                if (method == "GET" && path == "/build/options")
+                {
+                    HandleBuildOptions(context);
+                    return;
+                }
+
+                if (method == "GET" && path == "/build/info")
+                {
+                    HandleBuildInfo(context);
+                    return;
+                }
+
+                if (method == "GET" && path == "/growable-plants")
+                {
+                    HandleGrowablePlants(context);
+                    return;
+                }
+
                 if (method == "POST" && path == "/command")
                 {
                     HandleCommand(context);
@@ -206,6 +230,77 @@ namespace RimGPT
             }
 
             WriteJson(context.Response, 200, json);
+        }
+
+        private static void HandleMapRegion(HttpListenerContext context)
+        {
+            int minX;
+            int minZ;
+            int maxX;
+            int maxZ;
+            if (!TryReadQueryInt(context, "minX", out minX)
+                || !TryReadQueryInt(context, "minZ", out minZ)
+                || !TryReadQueryInt(context, "maxX", out maxX)
+                || !TryReadQueryInt(context, "maxZ", out maxZ))
+            {
+                WriteJson(context.Response, 400, "{\"error\":\"missingRegionBounds\"}");
+                return;
+            }
+
+            RimGPTReadRequest request = new RimGPTReadRequest
+            {
+                Type = RimGPTReadRequestType.MapRegion,
+                MinX = minX,
+                MinZ = minZ,
+                MaxX = maxX,
+                MaxZ = maxZ
+            };
+            int statusCode;
+            string json = RimGPTReadRequestQueue.EnqueueAndWait(request, out statusCode);
+            WriteJson(context.Response, statusCode, json);
+        }
+
+        private static void HandleBuildOptions(HttpListenerContext context)
+        {
+            RimGPTReadRequest request = new RimGPTReadRequest
+            {
+                Type = RimGPTReadRequestType.BuildOptions,
+                Category = context.Request.QueryString["category"],
+                Search = context.Request.QueryString["search"]
+            };
+            int statusCode;
+            string json = RimGPTReadRequestQueue.EnqueueAndWait(request, out statusCode);
+            WriteJson(context.Response, statusCode, json);
+        }
+
+        private static void HandleBuildInfo(HttpListenerContext context)
+        {
+            string defName = context.Request.QueryString["defName"];
+            if (string.IsNullOrEmpty(defName))
+            {
+                WriteJson(context.Response, 400, "{\"error\":\"missingDefName\"}");
+                return;
+            }
+
+            RimGPTReadRequest request = new RimGPTReadRequest
+            {
+                Type = RimGPTReadRequestType.BuildInfo,
+                DefName = defName
+            };
+            int statusCode;
+            string json = RimGPTReadRequestQueue.EnqueueAndWait(request, out statusCode);
+            WriteJson(context.Response, statusCode, json);
+        }
+
+        private static void HandleGrowablePlants(HttpListenerContext context)
+        {
+            RimGPTReadRequest request = new RimGPTReadRequest
+            {
+                Type = RimGPTReadRequestType.GrowablePlants
+            };
+            int statusCode;
+            string json = RimGPTReadRequestQueue.EnqueueAndWait(request, out statusCode);
+            WriteJson(context.Response, statusCode, json);
         }
 
         private static bool TryReadCommandName(string body, out string commandName)
@@ -489,8 +584,251 @@ namespace RimGPT
                 return true;
             }
 
+            if (string.Equals(commandName, "createStockpile", StringComparison.OrdinalIgnoreCase))
+            {
+                int minX;
+                int minZ;
+                int maxX;
+                int maxZ;
+                if (!TryReadRect(body, out minX, out minZ, out maxX, out maxZ))
+                {
+                    error = "missingBounds";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.CreateStockpile);
+                command.MinX = minX;
+                command.MinZ = minZ;
+                command.MaxX = maxX;
+                command.MaxZ = maxZ;
+                return true;
+            }
+
+            if (string.Equals(commandName, "setStockpilePriority", StringComparison.OrdinalIgnoreCase))
+            {
+                string zoneId;
+                string priority;
+                if (!TryReadString(body, "zoneId", out zoneId))
+                {
+                    error = "missingZoneId";
+                    return false;
+                }
+
+                if (!TryReadString(body, "priority", out priority))
+                {
+                    error = "missingPriority";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.SetStockpilePriority);
+                command.ZoneId = zoneId;
+                command.StoragePriority = priority;
+                return true;
+            }
+
+            if (string.Equals(commandName, "setStockpilePreset", StringComparison.OrdinalIgnoreCase))
+            {
+                string zoneId;
+                string preset;
+                if (!TryReadString(body, "zoneId", out zoneId))
+                {
+                    error = "missingZoneId";
+                    return false;
+                }
+
+                if (!TryReadString(body, "preset", out preset))
+                {
+                    error = "missingPreset";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.SetStockpilePreset);
+                command.ZoneId = zoneId;
+                command.Preset = preset;
+                return true;
+            }
+
+            if (string.Equals(commandName, "createGrowingZone", StringComparison.OrdinalIgnoreCase))
+            {
+                int minX;
+                int minZ;
+                int maxX;
+                int maxZ;
+                if (!TryReadRect(body, out minX, out minZ, out maxX, out maxZ))
+                {
+                    error = "missingBounds";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.CreateGrowingZone);
+                command.MinX = minX;
+                command.MinZ = minZ;
+                command.MaxX = maxX;
+                command.MaxZ = maxZ;
+                return true;
+            }
+
+            if (string.Equals(commandName, "setGrowingZonePlant", StringComparison.OrdinalIgnoreCase))
+            {
+                string zoneId;
+                string plantDef;
+                if (!TryReadString(body, "zoneId", out zoneId))
+                {
+                    error = "missingZoneId";
+                    return false;
+                }
+
+                if (!TryReadString(body, "plantDef", out plantDef))
+                {
+                    error = "missingPlantDef";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.SetGrowingZonePlant);
+                command.ZoneId = zoneId;
+                command.PlantDef = plantDef;
+                return true;
+            }
+
+            if (string.Equals(commandName, "placeBlueprint", StringComparison.OrdinalIgnoreCase))
+            {
+                RimGPTBlueprintPlacement placement;
+                if (!TryReadPlacement(body, out placement))
+                {
+                    error = "missingPlacement";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.PlaceBlueprint);
+                command.BuildDef = placement.BuildDef;
+                command.X = placement.X;
+                command.Z = placement.Z;
+                command.Rotation = placement.Rotation;
+                command.StuffDef = placement.StuffDef;
+                return true;
+            }
+
+            if (string.Equals(commandName, "placeBlueprints", StringComparison.OrdinalIgnoreCase))
+            {
+                System.Collections.Generic.List<RimGPTBlueprintPlacement> placements;
+                if (!TryReadPlacements(body, out placements))
+                {
+                    error = "missingPlacements";
+                    return false;
+                }
+
+                if (placements.Count > 100)
+                {
+                    error = "tooManyPlacements";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.PlaceBlueprints);
+                command.Placements = placements;
+                return true;
+            }
+
+            if (string.Equals(commandName, "cancelAt", StringComparison.OrdinalIgnoreCase))
+            {
+                int x;
+                int z;
+                if (!TryReadInt(body, "x", out x) || !TryReadInt(body, "z", out z))
+                {
+                    error = "missingCell";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.CancelAt);
+                command.X = x;
+                command.Z = z;
+                return true;
+            }
+
+            if (string.Equals(commandName, "designateDeconstruct", StringComparison.OrdinalIgnoreCase))
+            {
+                string thingId;
+                if (!TryReadString(body, "thingId", out thingId))
+                {
+                    error = "missingThingId";
+                    return false;
+                }
+
+                command = new RimGPTCommand(commandId, RimGPTCommandType.DesignateDeconstruct);
+                command.ThingId = thingId;
+                return true;
+            }
+
             error = "unsupportedCommand";
             return false;
+        }
+
+        private static bool TryReadRect(string body, out int minX, out int minZ, out int maxX, out int maxZ)
+        {
+            minX = 0;
+            minZ = 0;
+            maxX = 0;
+            maxZ = 0;
+            return TryReadInt(body, "minX", out minX)
+                && TryReadInt(body, "minZ", out minZ)
+                && TryReadInt(body, "maxX", out maxX)
+                && TryReadInt(body, "maxZ", out maxZ);
+        }
+
+        private static bool TryReadPlacement(string body, out RimGPTBlueprintPlacement placement)
+        {
+            placement = null;
+            string buildDef;
+            int x;
+            int z;
+            if (!TryReadString(body, "buildDef", out buildDef)
+                || !TryReadInt(body, "x", out x)
+                || !TryReadInt(body, "z", out z))
+            {
+                return false;
+            }
+
+            string rotation;
+            if (!TryReadString(body, "rotation", out rotation))
+            {
+                rotation = "North";
+            }
+
+            string stuffDef;
+            TryReadString(body, "stuffDef", out stuffDef);
+
+            placement = new RimGPTBlueprintPlacement
+            {
+                BuildDef = buildDef,
+                X = x,
+                Z = z,
+                Rotation = rotation,
+                StuffDef = stuffDef
+            };
+            return true;
+        }
+
+        private static bool TryReadPlacements(string body, out System.Collections.Generic.List<RimGPTBlueprintPlacement> placements)
+        {
+            placements = new System.Collections.Generic.List<RimGPTBlueprintPlacement>();
+            Match arrayMatch = Regex.Match(body, "\"placements\"\\s*:\\s*\\[(?<items>.*)\\]", RegexOptions.Singleline);
+            if (!arrayMatch.Success)
+            {
+                return false;
+            }
+
+            MatchCollection objectMatches = Regex.Matches(arrayMatch.Groups["items"].Value, "\\{[^{}]*\\}");
+            for (int i = 0; i < objectMatches.Count; i++)
+            {
+                RimGPTBlueprintPlacement placement;
+                if (!TryReadPlacement(objectMatches[i].Value, out placement))
+                {
+                    return false;
+                }
+
+                placements.Add(placement);
+            }
+
+            return placements.Count > 0;
         }
 
         private static bool TryReadString(string body, string fieldName, out string value)
@@ -547,6 +885,13 @@ namespace RimGPT
             }
 
             return int.TryParse(match.Groups["value"].Value, out value);
+        }
+
+        private static bool TryReadQueryInt(HttpListenerContext context, string fieldName, out int value)
+        {
+            value = 0;
+            string raw = context.Request.QueryString[fieldName];
+            return !string.IsNullOrEmpty(raw) && int.TryParse(raw, out value);
         }
 
         private static void WriteJson(HttpListenerResponse response, int statusCode, string json)

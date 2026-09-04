@@ -33,10 +33,10 @@ namespace RimGPT
             return Commands.TryDequeue(out command);
         }
 
-        public static void Complete(RimGPTCommand command, bool success, string messageOrError)
+        public static void Complete(RimGPTCommand command, bool success, string messageOrError, string dataJson = null)
         {
             RimGPTCommandResult result = success
-                ? RimGPTCommandResult.CompletedSuccess(command.CommandId, messageOrError)
+                ? RimGPTCommandResult.CompletedSuccess(command.CommandId, messageOrError, dataJson)
                 : RimGPTCommandResult.CompletedFailure(command.CommandId, messageOrError);
 
             lock (ResultsLock)
@@ -84,6 +84,7 @@ namespace RimGPT
         public bool Success;
         public string Message;
         public string Error;
+        public string DataJson;
 
         public static RimGPTCommandResult Queued(string commandId)
         {
@@ -94,14 +95,15 @@ namespace RimGPT
             };
         }
 
-        public static RimGPTCommandResult CompletedSuccess(string commandId, string message)
+        public static RimGPTCommandResult CompletedSuccess(string commandId, string message, string dataJson)
         {
             return new RimGPTCommandResult
             {
                 CommandId = commandId,
                 Status = "completed",
                 Success = true,
-                Message = message
+                Message = message,
+                DataJson = dataJson
             };
         }
 
@@ -125,7 +127,13 @@ namespace RimGPT
 
             if (Success)
             {
-                return "{\"commandId\":\"" + RimGPTJson.Escape(CommandId) + "\",\"status\":\"completed\",\"success\":true,\"message\":\"" + RimGPTJson.Escape(Message) + "\"}";
+                string json = "{\"commandId\":\"" + RimGPTJson.Escape(CommandId) + "\",\"status\":\"completed\",\"success\":true,\"message\":\"" + RimGPTJson.Escape(Message) + "\"";
+                if (!string.IsNullOrEmpty(DataJson))
+                {
+                    json += ",\"data\":" + DataJson;
+                }
+
+                return json + "}";
             }
 
             return "{\"commandId\":\"" + RimGPTJson.Escape(CommandId) + "\",\"status\":\"completed\",\"success\":false,\"error\":\"" + RimGPTJson.Escape(Error) + "\"}";

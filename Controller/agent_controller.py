@@ -5,7 +5,7 @@ from typing import Any
 from openai import OpenAI
 
 from bridge import CommandStatusUnreachable, RimWorldBridge, RimWorldBridgeError
-from tools import TOOLS, tool_call_to_bridge_command
+from tools import TOOLS, is_read_only_tool, tool_call_to_bridge_command
 
 
 SYSTEM_INSTRUCTIONS = """You are playing RimWorld through a restricted control interface.
@@ -20,9 +20,15 @@ You currently have only a limited toolset. Do not assume you can perform actions
 
 You may now allow starting supplies, choose research, designate visible mining/cutting/harvesting/hunting targets, and request unambiguous prioritized hauling.
 
+You may inspect bounded visible map regions, create stockpile and growing zones, place construction blueprints, cancel player orders, and designate visible player structures for deconstruction.
+
 Treat the supplied RimWorld state as authoritative.
 
 Do not invent pawn IDs, map coordinates, work types, resources, threats, or other game state.
+
+Do not invent buildDef, stuffDef, plantDef, or zone IDs. Use list_build_options, get_build_info, list_growable_plants, and the supplied state when exact defs or IDs are uncertain.
+
+Inspect relevant map regions before committing major construction, growing zones, or storage zones.
 
 Prefer reversible and low-risk actions when information is incomplete.
 
@@ -35,6 +41,10 @@ Use allow_all near scenario start when visible starting supplies are forbidden a
 For resources, distinguish currently available supplies from visible forbidden supplies. A zero available count does not mean there are no visible forbidden supplies.
 
 Designations and movement use current-map RimWorld x/z coordinates only. Do not interact with hidden or fogged information.
+
+Blueprint placement only creates normal construction blueprints; colonists still need resources, access, work priorities, and time to build them.
+
+Prefer compact, practical early colony layouts. At game start prioritize immediate survival: supplies, shelter, food, beds, basic storage, research, and power as appropriate. Do not overbuild when resources are scarce.
 
 prioritize_job is intentionally conservative and may fail when a normal player right-click action is ambiguous; treat that as a signal to use a narrower available tool or explain what capability is missing.
 
@@ -141,9 +151,13 @@ class AgentController:
             try:
                 bridge_command = tool_call_to_bridge_command(name, arguments)
             except Exception as exc:
-                result = {"success": False, "error": str(exc)}
-                print(f"[ERROR] {name}: {result['error']}")
-                outputs[index] = function_output(call_id, result)
+                if is_read_only_tool(name):
+                    result = self._execute_read_only_tool(name, arguments)
+                    outputs[index] = function_output(call_id, result)
+                else:
+                    result = {"success": False, "error": str(exc)}
+                    print(f"[ERROR] {name}: {result['error']}")
+                    outputs[index] = function_output(call_id, result)
                 continue
 
             if self.dry_run:
@@ -244,6 +258,32 @@ class AgentController:
                     outputs[item["index"]] = function_output(item["call_id"], result)
 
         return [output for output in outputs if output is not None]
+
+    def _execute_read_only_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        started = time.monotonic()
+        try:
+            if name == "inspect_map":
+                result = self.bridge.inspect_map(
+                    arguments["min_x"],
+                    arguments["min_z"],
+                    arguments["max_x"],
+                    arguments["max_z"],
+                )
+            elif name == "list_build_options":
+                result = self.bridge.list_build_options(arguments.get("category"), arguments.get("search"))
+            elif name == "get_build_info":
+                result = self.bridge.get_build_info(arguments["def_name"])
+            elif name == "list_growable_plants":
+                result = self.bridge.list_growable_plants()
+            else:
+                raise ValueError(f"Unsupported read-only tool: {name}")
+        except Exception as exc:
+            print(f"[ERROR] {name}: {exc}")
+            return {"success": False, "error": str(exc)}
+
+        elapsed = time.monotonic() - started
+        print(f"[RESULT] {name} completed in {elapsed:.2f}s")
+        return {"success": True, "result": result, "elapsedSeconds": round(elapsed, 3)}
 
     def _reconcile_uncertain_commands(self) -> list[dict[str, Any]]:
         updates: list[dict[str, Any]] = []
