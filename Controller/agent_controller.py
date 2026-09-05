@@ -129,6 +129,7 @@ class AgentController:
         state = self.bridge.get_state()
         self.current_state = self._accept_authoritative_state(state)
         print(f"[STATE] {summarize_state(state)}")
+        self._measure_state_delta()
 
         print(f"[MODEL] Requesting one decision cycle from {self.model}")
         initial_input = [
@@ -420,6 +421,17 @@ class AgentController:
             except StateStoreError as exc:
                 print(f"[WARNING] Could not persist authoritative state: {exc}")
         return state
+
+    def _measure_state_delta(self) -> None:
+        store = getattr(self, "state_store", None)
+        if store is None:
+            return
+        try:
+            delta = store.get_changes_since_last_decision()
+            if delta.get("bootstrapRequired"):
+                print(f"[DELTA] bootstrapRequired reason={delta.get('reason')}")
+        except Exception as exc:
+            print(f"[WARNING] Could not calculate local state delta: {exc}")
 
     def _request_model(
         self,

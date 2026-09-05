@@ -53,6 +53,22 @@ class StateStore:
     def get_decision_baseline(self) -> dict[str, Any] | None:
         return copy.deepcopy(self._decision_baseline)
 
+    def get_changes_since_last_decision(self) -> dict[str, Any]:
+        """Calculate a side-effect-free semantic delta for future prompt use."""
+        from state_diff import StateDiff, serialized_chars
+
+        baseline = self.get_decision_baseline()
+        current = self.get_current_state()
+        delta = StateDiff.compare(baseline, current, logger=self._log)
+        delta_chars = serialized_chars(delta)
+        full_state_chars = serialized_chars(current) if current is not None else 0
+        ratio = (full_state_chars / delta_chars) if delta_chars else 0.0
+        self._log(
+            f"[DELTA] from={snapshot_version(baseline)} to={snapshot_version(current)} "
+            f"chars={delta_chars} fullStateChars={full_state_chars} compressionRatio={ratio:.1f}x"
+        )
+        return delta
+
     def update_current_state(self, snapshot: dict[str, Any]) -> bool:
         """Accept a live authoritative state and persist it when it advances."""
         if not isinstance(snapshot, dict):

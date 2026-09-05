@@ -125,3 +125,54 @@ are retained with an `.invalid-...` suffix for diagnosis. `current_state` is
 updated from every authoritative bridge fetch. `decision_baseline` is only
 advanced after a normally completed model decision cycle, never on ordinary
 state refreshes.
+
+## Semantic State Deltas
+
+`StateStore.get_changes_since_last_decision()` compares the persisted
+`decision_baseline` with `current_state` through `StateDiff`. Reading a delta is
+side-effect free and does not advance the baseline. The controller currently
+measures and logs these deltas locally, but still sends the complete state to
+the model; delta-only model context is intentionally deferred to a later
+milestone.
+
+Normal output contains `fromSnapshot`, `toSnapshot`, `elapsedTicks`, and a
+deterministically ordered `changes` object. Stable-ID collections are matched by
+ID, work and skill records by `defName`, and power networks by a fingerprint of
+their stable connected-building IDs. Missing baselines, colony/map changes,
+schema incompatibility, missing identity, or snapshot regression return an
+explicit `bootstrapRequired` result instead of comparing unrelated snapshots.
+
+The diff suppresses routine continuous-value noise and emits semantic boundary
+crossings. Current bands are:
+
+- Food: urgent below 0.12, low below 0.30.
+- Mood: extreme below 0.05, major below 0.18, minor below 0.35.
+- Rest: exhausted below 0.14, tired below 0.30.
+- Recreation: deprived below 0.15, low below 0.35.
+- Bleeding: serious at 0.15, critical at 0.50; pain: moderate at 0.30, severe at 0.60.
+- Temperature: dangerous cold below -10 C, freezing below 0 C, cold below 10 C, hot at 30 C, dangerous heat at 40 C.
+- Fuel: empty at zero, low below 25 percent; batteries: empty at 2 percent or less, low below 20 percent.
+- Research: quarter-cost milestones, completion, and active-project changes.
+
+Pawn and threat movement uses minimum Manhattan distances of 15 and 8 cells;
+drafted pawns use 3 cells. Building hit-point changes below 10 percent are
+suppressed unless destruction occurs. New threats, drafting, health emergencies,
+research completion, equipment changes, and power/fuel state failures remain
+explicit.
+
+RimWorld's `IBillGiver` collection includes mobile pawns and animals as well as
+stationary worktables. Position-only movement is therefore ignored in the
+`operations.worktables` delta; bill and operational-state changes remain
+tracked.
+
+Verbose event lists default to 40 details and the complete delta defaults to a
+24,000-character cap. Oversized output first aggregates noncritical sections,
+then compacts critical colonist/threat details, and finally retains explicit
+counts and sample IDs with `detailsTruncated` markers. Truncation is logged.
+
+The current full `/state` schema exposes zone counts/bounds but not complete
+zone or allowed-area cell lists, and it does not expose a top-level collection
+of individual crop plants. `StateDiff` handles cell geometry and plant events
+when those optional fields are present, but otherwise conservatively diffs the
+available zone properties, counts, and bounds. It does not infer missing cell or
+plant events.
