@@ -12,7 +12,8 @@ DEFAULT_MAX_MODEL_RESULT_CHARS = 12_000
 MAX_INSPECT_MAP_CHARS = 24_000
 MAX_ERROR_CHARS = 800
 CATALOG_TOOLS = {"list_build_options", "get_build_info", "list_growable_plants", "list_recipes"}
-READ_TOOLS = CATALOG_TOOLS | {
+CAPABILITY_TOOLS = {"list_capabilities", "enable_capability"}
+READ_TOOLS = CATALOG_TOOLS | CAPABILITY_TOOLS | {
     "get_colony_state", "inspect_map", "check_build_placements", "check_zone_placement"
 }
 
@@ -89,6 +90,14 @@ class ModelToolResultFormatter:
         return self._format_command(tool_name, raw, arguments)
 
     def _format_read(self, tool_name: str, raw: dict[str, Any], arguments: dict[str, Any]) -> dict[str, Any]:
+        if tool_name in CAPABILITY_TOOLS and raw.get("success") is False:
+            return drop_nulls({
+                "success": False,
+                "reason": raw.get("reason") or raw.get("error") or "Capability operation failed",
+                "availableCapabilities": copy.deepcopy(raw.get("availableCapabilities")),
+                "maxDynamicGroups": raw.get("maxDynamicGroups"),
+                "activeGroups": copy.deepcopy(raw.get("activeGroups")),
+            })
         if raw.get("success") is False:
             return failure_result(raw, arguments)
         result = raw.get("result") if raw.get("success") is True and isinstance(raw.get("result"), dict) else raw
@@ -96,6 +105,8 @@ class ModelToolResultFormatter:
             raise TypeError("Read tool did not return an object")
         if result.get("error") or result.get("gameLoaded") is False:
             return failure_result(result, arguments)
+        if tool_name in CAPABILITY_TOOLS:
+            return {"success": True, **drop_nulls(copy.deepcopy(result))}
         if tool_name == "get_colony_state":
             return {"success": True, **drop_nulls(copy.deepcopy(result))}
         if tool_name == "inspect_map":
@@ -460,6 +471,10 @@ def failure_result(raw: dict[str, Any], arguments: dict[str, Any]) -> dict[str, 
             result[output] = copy.deepcopy(arguments[source])
     if raw.get("commandId") and raw.get("status") != "completed":
         result["commandId"] = raw.get("commandId")
+    if raw.get("requiredCapability"):
+        result["requiredCapability"] = raw.get("requiredCapability")
+    if raw.get("availableCapabilities"):
+        result["availableCapabilities"] = copy.deepcopy(raw.get("availableCapabilities"))
     return drop_nulls(result)
 
 

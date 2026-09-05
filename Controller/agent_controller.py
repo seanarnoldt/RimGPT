@@ -21,7 +21,13 @@ from decision_context import DecisionContextBuilder, DecisionContextError, build
 from model_tool_result import ModelToolResultFormatter
 from state_diff import StateDiff
 from state_store import StateStore, StateStoreError
-from tools import TOOLS, convert_blueprint_placements, is_read_only_tool, tool_call_to_bridge_command
+from tool_registry import (
+    DEFAULT_MAX_ACTIVE_TOOL_GROUPS,
+    DEFAULT_TOOL_REGISTRY,
+    ActiveToolSet,
+    select_initial_tool_groups,
+)
+from tools import convert_blueprint_placements, tool_call_to_bridge_command
 
 DEFAULT_MAX_TOOL_ROUNDS = 8
 DEFAULT_MAX_TOTAL_TOOL_CALLS = 100
@@ -38,6 +44,8 @@ Your objective is to keep the colony alive, improve its long-term position, and 
 You may make decisions independently.
 
 You currently have only a limited toolset. Do not assume you can perform actions that are not exposed as tools.
+
+Only currently enabled tools appear directly. If a needed gameplay action is absent, use list_capabilities and enable_capability instead of assuming RimGPT cannot perform it. Enable only the groups needed for the current plan; enabled groups persist for this decision cycle and reset on the next cycle.
 
 You may now allow starting supplies, choose research, designate visible mining/cutting/harvesting/hunting targets, and request unambiguous prioritized hauling.
 
@@ -108,6 +116,7 @@ class AgentController:
         repeated_failed_call_limit: int = DEFAULT_REPEATED_FAILED_CALL_LIMIT,
         max_input_tokens_per_request: int = DEFAULT_MAX_INPUT_TOKENS_PER_REQUEST,
         max_model_requests_per_cycle: int = DEFAULT_MAX_MODEL_REQUESTS_PER_CYCLE,
+        max_active_tool_groups: int = DEFAULT_MAX_ACTIVE_TOOL_GROUPS,
         pricing: Pricing | None = None,
         client: Any | None = None,
         state_store: StateStore | None = None,
@@ -121,12 +130,15 @@ class AgentController:
         self.repeated_failed_call_limit = repeated_failed_call_limit
         self.max_input_tokens_per_request = max_input_tokens_per_request
         self.max_model_requests_per_cycle = max_model_requests_per_cycle
+        self.max_active_tool_groups = max_active_tool_groups
         self.pricing = pricing or Pricing.from_environment()
         self.client = client or OpenAI()
         self.state_store = state_store or StateStore()
         self.context_builder = DecisionContextBuilder(self.state_store)
         self.colony_state_query = ColonyStateQuery(self.state_store)
         self.tool_result_formatter = ModelToolResultFormatter()
+        self.tool_registry = DEFAULT_TOOL_REGISTRY
+        self.active_tools = ActiveToolSet(self.tool_registry, max_active_tool_groups)
         self.uncertain_commands: dict[str, dict[str, Any]] = {}
         self.current_state: dict[str, Any] | None = None
         self._last_batch_had_write = False
@@ -158,6 +170,8 @@ class AgentController:
             self.termination_reason = str(exc)
             print(f"[ERROR] Decision cycle terminated: {exc}")
             return
+
+        self._configure_initial_tools(decision_context)
 
         print(f"[MODEL] Requesting one decision cycle from {self.model}")
         initial_input = [
@@ -271,11 +285,24 @@ class AgentController:
         prepared: list[dict[str, Any]] = []
         outputs: list[dict[str, Any] | None] = [None] * len(tool_calls)
         self._last_batch_had_write = False
+        active_at_round_start = {schema["name"] for schema in self._get_active_tools().schemas()}
 
         for index, call in enumerate(tool_calls):
             name = getattr(call, "name", "")
             call_id = getattr(call, "call_id", "")
             raw_arguments = getattr(call, "arguments", "{}")
+
+            if name not in active_at_round_start:
+                registration = self.tool_registry.registration(name)
+                result = {
+                    "success": False,
+                    "error": "toolCapabilityNotEnabled" if registration is not None else "unknownTool",
+                }
+                if registration is not None:
+                    result["requiredCapability"] = registration.group
+                print(f"[ERROR] {name}: {result['error']}")
+                outputs[index] = self._function_output(call_id, name, result, {})
+                continue
 
             try:
                 arguments = json.loads(raw_arguments)
@@ -287,17 +314,19 @@ class AgentController:
 
             print(f"[ACTION] {name}({format_arguments(arguments)})")
 
+            registration = self.tool_registry.registration(name)
+            if registration is not None and registration.read_only:
+                result = self._execute_read_only_tool(name, arguments)
+                outputs[index] = self._function_output(call_id, name, result, arguments)
+                continue
+
             try:
                 bridge_command = tool_call_to_bridge_command(name, arguments)
             except Exception as exc:
-                if is_read_only_tool(name):
-                    result = self._execute_read_only_tool(name, arguments)
-                    outputs[index] = self._function_output(call_id, name, result, arguments)
-                else:
-                    result = {"success": False, "error": str(exc)}
-                    print(f"[ERROR] {name}: {result['error']}")
-                    outputs[index] = self._function_output(call_id, name, result, arguments)
-                    self._record_failed_call(name, arguments, result)
+                result = {"success": False, "error": str(exc)}
+                print(f"[ERROR] {name}: {result['error']}")
+                outputs[index] = self._function_output(call_id, name, result, arguments)
+                self._record_failed_call(name, arguments, result)
                 continue
 
             if self.dry_run:
@@ -465,6 +494,7 @@ class AgentController:
             self.failed_call_counts = {}
         if not hasattr(self, "termination_reason"):
             self.termination_reason = None
+        self._get_active_tools()
 
     def _begin_cycle(self) -> None:
         self.total_tool_calls = 0
@@ -477,6 +507,35 @@ class AgentController:
         self.raw_tool_results = []
         self.carried_context_chars = 0
         self.cycle_cost = 0.0
+        self._get_active_tools().reset()
+
+    def _get_active_tools(self) -> ActiveToolSet:
+        registry = getattr(self, "tool_registry", None)
+        if registry is None:
+            registry = DEFAULT_TOOL_REGISTRY
+            self.tool_registry = registry
+        active = getattr(self, "active_tools", None)
+        if active is None:
+            maximum = getattr(self, "max_active_tool_groups", DEFAULT_MAX_ACTIVE_TOOL_GROUPS)
+            active = ActiveToolSet(registry, maximum)
+            self.active_tools = active
+        return active
+
+    def _configure_initial_tools(self, decision_context: dict[str, Any]) -> None:
+        preloaded = select_initial_tool_groups(decision_context)
+        self._get_active_tools().reset(preloaded)
+        for group in preloaded:
+            print(f"[TOOLS] capability={group} preloaded")
+        self._log_active_tools()
+
+    def _log_active_tools(self) -> None:
+        active = self._get_active_tools()
+        schemas = active.schemas()
+        print(
+            "[TOOLS] "
+            f"activeGroups={','.join(active.groups)} toolCount={len(schemas)} "
+            f"schemaChars={serialized_chars(schemas)}"
+        )
 
     def _accept_authoritative_state(self, state: dict[str, Any]) -> dict[str, Any]:
         store = getattr(self, "state_store", None)
@@ -572,9 +631,11 @@ class AgentController:
                 f"Maximum model requests per decision cycle reached: {self.max_model_requests_per_cycle}"
             )
 
+        active_tools = self._get_active_tools().schemas()
+        self._log_active_tools()
         breakdown = measure_context(
             instructions=SYSTEM_INSTRUCTIONS,
-            tools=TOOLS,
+            tools=active_tools,
             input_items=input_items,
             state=state,
             accumulated_tool_result_chars=self.accumulated_tool_result_chars,
@@ -599,7 +660,7 @@ class AgentController:
         request: dict[str, Any] = {
             "model": self.model,
             "instructions": SYSTEM_INSTRUCTIONS,
-            "tools": TOOLS,
+            "tools": active_tools,
             "input": input_items,
         }
         if previous_response_id:
@@ -631,6 +692,18 @@ class AgentController:
         try:
             if name == "get_colony_state":
                 result = self._get_colony_state_query().get(arguments["section"])
+            elif name == "list_capabilities":
+                active = self._get_active_tools()
+                result = {
+                    "capabilities": self.tool_registry.capability_list(active.groups),
+                    "maxDynamicGroups": active.max_dynamic_groups,
+                    "activeDynamicGroups": len(active.dynamic_groups),
+                }
+            elif name == "enable_capability":
+                result = self._get_active_tools().enable(arguments["name"])
+                if result.get("success") is True:
+                    print(f"[TOOLS] capability={arguments['name']} enabled")
+                    self._log_active_tools()
             elif name == "inspect_map":
                 result = self.bridge.inspect_map(
                     arguments["min_x"],
@@ -661,6 +734,11 @@ class AgentController:
         except Exception as exc:
             print(f"[ERROR] {name}: {exc}")
             result = {"success": False, "error": str(exc)}
+            self._record_failed_call(name, arguments, result)
+            return result
+
+        if isinstance(result, dict) and result.get("success") is False:
+            print(f"[ERROR] {name}: {result.get('reason') or 'capability activation failed'}")
             self._record_failed_call(name, arguments, result)
             return result
 

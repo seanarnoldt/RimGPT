@@ -130,6 +130,7 @@ class BatchCommandTests(unittest.TestCase):
         controller.bridge = BatchControllerBridge()
         controller.dry_run = False
         controller.uncertain_commands = {}
+        controller._get_active_tools().enable("combat")
 
         calls = [
             SimpleNamespace(

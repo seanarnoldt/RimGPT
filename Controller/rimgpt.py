@@ -14,6 +14,7 @@ from agent_controller import (
 )
 from bridge import RimWorldBridge, RimWorldBridgeError
 from context_telemetry import DEFAULT_MAX_INPUT_TOKENS_PER_REQUEST, DEFAULT_MAX_MODEL_REQUESTS_PER_CYCLE
+from tool_registry import DEFAULT_MAX_ACTIVE_TOOL_GROUPS
 
 
 DEFAULT_BRIDGE_URL = "http://127.0.0.1:47831"
@@ -74,6 +75,12 @@ def parse_args() -> argparse.Namespace:
         default=environment_int("RIMGPT_MAX_MODEL_REQUESTS_PER_CYCLE", DEFAULT_MAX_MODEL_REQUESTS_PER_CYCLE),
         help="Maximum Responses API requests in one top-level decision cycle.",
     )
+    parser.add_argument(
+        "--max-active-tool-groups",
+        type=int,
+        default=environment_int("RIMGPT_MAX_ACTIVE_TOOL_GROUPS", DEFAULT_MAX_ACTIVE_TOOL_GROUPS),
+        help="Maximum non-core capability groups enabled during one decision cycle.",
+    )
     return parser.parse_args()
 
 
@@ -124,6 +131,9 @@ def main() -> int:
     if args.max_model_requests_per_cycle < 1:
         print("[ERROR] --max-model-requests-per-cycle must be at least 1")
         return 2
+    if args.max_active_tool_groups < 1:
+        print("[ERROR] --max-active-tool-groups must be at least 1")
+        return 2
     try:
         cycles = resolve_cycle_count(args)
     except ValueError as exc:
@@ -146,6 +156,7 @@ def main() -> int:
         repeated_failed_call_limit=args.repeated_failed_call_limit,
         max_input_tokens_per_request=args.max_input_tokens_per_request,
         max_model_requests_per_cycle=args.max_model_requests_per_cycle,
+        max_active_tool_groups=args.max_active_tool_groups,
     )
 
     try:

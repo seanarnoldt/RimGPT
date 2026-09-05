@@ -29,6 +29,7 @@ Development API-spend and context controls:
 ```bash
 export RIMGPT_MAX_INPUT_TOKENS_PER_REQUEST="30000"
 export RIMGPT_MAX_MODEL_REQUESTS_PER_CYCLE="8"
+export RIMGPT_MAX_ACTIVE_TOOL_GROUPS="3"
 
 # Optional pricing telemetry. Values are USD per million tokens and must be
 # updated when the selected model's pricing changes.
@@ -286,3 +287,30 @@ Each tool logs a size-only line:
 Per-request `[CONTEXT]` logs include `toolResultCharsThisRound` and
 `toolResultCharsAccumulated`. Raw results are retained in a bounded in-memory
 diagnostic list for the current cycle and are never dumped into normal logs.
+
+## Capability-Scoped Tools
+
+The controller keeps the complete gameplay tool registry locally, but sends
+only the active capability schemas on each Responses request. The always-on
+`core` group contains selective colony state, bounded map inspection, speed
+control, `list_capabilities`, and `enable_capability`. Additional groups cover
+work, construction, zones, production, equipment, power, research, combat, and
+utility operations.
+
+`list_capabilities` returns compact group descriptions without embedding tool
+schemas. `enable_capability(name)` enables one explicit allowlisted group for
+the rest of the current decision cycle; the following Responses continuation
+includes that group's schemas. Dynamic groups reset before the next top-level
+cycle. By default, at most three non-core groups can be active, controlled by
+`RIMGPT_MAX_ACTIVE_TOOL_GROUPS` or `--max-active-tool-groups`. Wildcards and
+enable-all requests are rejected, and a tool absent from the active surface
+cannot execute even if a model fabricates its function name.
+
+Visible active threats deterministically preload combat. Stable colonies begin
+with core only. `[TOOLS]` logs report active groups, tool count, and exact
+serialized schema characters for every request.
+
+OpenAI SDK 3.8.0 was inspected for native Tool Search support. Its installed
+Python types do not expose `tool_search`, `ToolSearch`, or `defer_loading`, so
+RimGPT uses the local registry for predictable testing and debugging. Active
+schemas are supplied explicitly on every Responses continuation.

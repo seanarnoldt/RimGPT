@@ -4,6 +4,38 @@ from typing import Any
 TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
+        "name": "list_capabilities",
+        "description": "List compact descriptions of additional RimGPT capability groups and whether each is enabled.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "enable_capability",
+        "description": "Enable one explicit additional capability group for the rest of this decision cycle. Enable only groups needed for the current plan.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "enum": [
+                        "work", "construction", "zones", "production", "equipment",
+                        "power", "research", "combat", "utility",
+                    ],
+                }
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
         "name": "get_colony_state",
         "description": "Read one bounded section from the latest authoritative local RimWorld state. Use the compact summary and decision delta first; request only the exact section needed for the current decision. Live state overrides strategic memory.",
         "strict": True,
@@ -720,20 +752,11 @@ TOOLS.extend(
 )
 
 
-READ_ONLY_TOOLS = {
-    "get_colony_state",
-    "inspect_map",
-    "list_build_options",
-    "get_build_info",
-    "list_growable_plants",
-    "check_build_placements",
-    "check_zone_placement",
-    "list_recipes",
-}
-
-
 def is_read_only_tool(name: str) -> bool:
-    return name in READ_ONLY_TOOLS
+    from tool_registry import DEFAULT_TOOL_REGISTRY
+
+    registration = DEFAULT_TOOL_REGISTRY.registration(name)
+    return registration is not None and registration.read_only
 
 
 def convert_blueprint_placements(placements: list[dict[str, Any]]) -> list[dict[str, Any]]:
