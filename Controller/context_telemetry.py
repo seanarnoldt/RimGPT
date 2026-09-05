@@ -93,6 +93,7 @@ class Pricing:
     input_per_million: float | None = None
     cached_input_per_million: float | None = None
     output_per_million: float | None = None
+    cache_write_per_million: float | None = None
 
     @classmethod
     def from_environment(cls) -> "Pricing":
@@ -100,19 +101,34 @@ class Pricing:
             input_per_million=_optional_nonnegative_float("RIMGPT_INPUT_COST_PER_MILLION"),
             cached_input_per_million=_optional_nonnegative_float("RIMGPT_CACHED_INPUT_COST_PER_MILLION"),
             output_per_million=_optional_nonnegative_float("RIMGPT_OUTPUT_COST_PER_MILLION"),
+            cache_write_per_million=_optional_nonnegative_float("RIMGPT_CACHE_WRITE_COST_PER_MILLION"),
         )
 
-    def estimate_cost(self, input_tokens: int | None, cached_input_tokens: int | None, output_tokens: int | None) -> float | None:
+    def estimate_cost(
+        self,
+        input_tokens: int | None,
+        cached_input_tokens: int | None,
+        output_tokens: int | None,
+        cache_write_tokens: int | None = None,
+    ) -> float | None:
         if input_tokens is None or output_tokens is None:
             return None
         if self.input_per_million is None or self.output_per_million is None:
             return None
         cached = min(max(cached_input_tokens or 0, 0), input_tokens)
         uncached = input_tokens - cached
+        cache_write = min(max(cache_write_tokens or 0, 0), uncached)
+        regular_uncached = uncached - cache_write
         if cached and self.cached_input_per_million is None:
             return None
+        cache_write_rate = (
+            self.cache_write_per_million
+            if self.cache_write_per_million is not None
+            else self.input_per_million
+        )
         return (
-            (uncached * self.input_per_million)
+            (regular_uncached * self.input_per_million)
+            + (cache_write * cache_write_rate)
             + (cached * (self.cached_input_per_million or 0.0))
             + (output_tokens * self.output_per_million)
         ) / 1_000_000
@@ -122,6 +138,7 @@ class Pricing:
 class UsageTelemetry:
     input_tokens: int | None
     cached_input_tokens: int | None
+    cache_write_tokens: int | None
     uncached_input_tokens: int | None
     output_tokens: int | None
     estimated_cost: float | None
@@ -196,21 +213,25 @@ def measure_context(
 
 def extract_usage(response: Any, pricing: Pricing) -> UsageTelemetry:
     usage = _value(response, "usage")
-    input_tokens = _as_int(_value(usage, "input_tokens"))
-    output_tokens = _as_int(_value(usage, "output_tokens"))
+    input_tokens = _as_nonnegative_int(_value(usage, "input_tokens"))
+    output_tokens = _as_nonnegative_int(_value(usage, "output_tokens"))
     input_details = _value(usage, "input_tokens_details")
-    cached_input_tokens = _as_int(_value(input_details, "cached_tokens"))
+    cached_input_tokens = _as_nonnegative_int(_value(input_details, "cached_tokens"))
     if cached_input_tokens is None:
-        cached_input_tokens = _as_int(_value(usage, "cached_input_tokens"))
+        cached_input_tokens = _as_nonnegative_int(_value(usage, "cached_input_tokens"))
+    cache_write_tokens = _as_nonnegative_int(_value(input_details, "cache_write_tokens"))
+    if cache_write_tokens is None:
+        cache_write_tokens = _as_nonnegative_int(_value(usage, "cache_write_tokens"))
     uncached_input_tokens = None
     if input_tokens is not None:
         uncached_input_tokens = input_tokens - min(max(cached_input_tokens or 0, 0), input_tokens)
     return UsageTelemetry(
         input_tokens=input_tokens,
         cached_input_tokens=cached_input_tokens,
+        cache_write_tokens=cache_write_tokens,
         uncached_input_tokens=uncached_input_tokens,
         output_tokens=output_tokens,
-        estimated_cost=pricing.estimate_cost(input_tokens, cached_input_tokens, output_tokens),
+        estimated_cost=pricing.estimate_cost(input_tokens, cached_input_tokens, output_tokens, cache_write_tokens),
     )
 
 
@@ -225,6 +246,11 @@ def _as_int(value: Any) -> int | None:
         return int(value) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _as_nonnegative_int(value: Any) -> int | None:
+    parsed = _as_int(value)
+    return parsed if parsed is not None and parsed >= 0 else None
 
 
 def _optional_nonnegative_float(name: str) -> float | None:

@@ -10,6 +10,7 @@ from colony_state_query import ColonyStateQuery
 from context_telemetry import (
     DEFAULT_MAX_INPUT_TOKENS_PER_REQUEST,
     DEFAULT_MAX_MODEL_REQUESTS_PER_CYCLE,
+    ContextBreakdown,
     ModelContextLimitError,
     ModelRequestLimitError,
     Pricing,
@@ -19,6 +20,15 @@ from context_telemetry import (
 )
 from decision_context import DecisionContextBuilder, DecisionContextError, build_current_summary, serialize_context
 from model_tool_result import ModelToolResultFormatter
+from prompt_runtime import (
+    DEFAULT_COMPACT_THRESHOLD_TOKENS,
+    DEFAULT_MAX_COMPACTIONS_PER_CYCLE,
+    DEFAULT_PROMPT_CACHE_MODE,
+    RIMGPT_PROMPT_VERSION,
+    compacted_output_as_input,
+    detect_responses_features,
+    prompt_cache_request_fields,
+)
 from state_diff import StateDiff
 from state_store import StateStore, StateStoreError
 from tool_registry import (
@@ -35,7 +45,7 @@ DEFAULT_MAX_WRITE_COMMANDS = 75
 DEFAULT_REPEATED_FAILED_CALL_LIMIT = 3
 
 
-SYSTEM_INSTRUCTIONS = """You are playing RimWorld through a restricted control interface.
+STABLE_PROMPT_PREFIX = """You are playing RimWorld through a restricted control interface.
 
 You are the colony's strategic controller.
 
@@ -103,6 +113,10 @@ prioritize_job is intentionally conservative and may fail when a normal player r
 
 Because the current control surface is incomplete, it is acceptable to take no action and explain what additional capability would be needed."""
 
+# Compatibility name used by existing telemetry/tests. Dynamic colony context is
+# always supplied separately through Responses input items.
+SYSTEM_INSTRUCTIONS = STABLE_PROMPT_PREFIX
+
 
 class AgentController:
     def __init__(
@@ -117,6 +131,9 @@ class AgentController:
         max_input_tokens_per_request: int = DEFAULT_MAX_INPUT_TOKENS_PER_REQUEST,
         max_model_requests_per_cycle: int = DEFAULT_MAX_MODEL_REQUESTS_PER_CYCLE,
         max_active_tool_groups: int = DEFAULT_MAX_ACTIVE_TOOL_GROUPS,
+        prompt_cache_mode: str = DEFAULT_PROMPT_CACHE_MODE,
+        compact_threshold_tokens: int = DEFAULT_COMPACT_THRESHOLD_TOKENS,
+        max_compactions_per_cycle: int = DEFAULT_MAX_COMPACTIONS_PER_CYCLE,
         pricing: Pricing | None = None,
         client: Any | None = None,
         state_store: StateStore | None = None,
@@ -131,8 +148,12 @@ class AgentController:
         self.max_input_tokens_per_request = max_input_tokens_per_request
         self.max_model_requests_per_cycle = max_model_requests_per_cycle
         self.max_active_tool_groups = max_active_tool_groups
+        self.prompt_cache_mode = prompt_cache_mode
+        self.compact_threshold_tokens = compact_threshold_tokens
+        self.max_compactions_per_cycle = max_compactions_per_cycle
         self.pricing = pricing or Pricing.from_environment()
         self.client = client or OpenAI()
+        self.responses_features = detect_responses_features(self.client.responses)
         self.state_store = state_store or StateStore()
         self.context_builder = DecisionContextBuilder(self.state_store)
         self.colony_state_query = ColonyStateQuery(self.state_store)
@@ -153,6 +174,8 @@ class AgentController:
         self.carried_context_chars = 0
         self.cycle_cost = 0.0
         self.session_cost = 0.0
+        self.compaction_count = 0
+        self.previous_response_id: str | None = None
 
     def run_once(self, trigger: dict[str, Any] | None = None) -> None:
         self._begin_cycle()
@@ -507,6 +530,8 @@ class AgentController:
         self.raw_tool_results = []
         self.carried_context_chars = 0
         self.cycle_cost = 0.0
+        self.compaction_count = 0
+        self.previous_response_id = None
         self._get_active_tools().reset()
 
     def _get_active_tools(self) -> ActiveToolSet:
@@ -626,6 +651,7 @@ class AgentController:
         previous_response_id: str | None = None,
         context_payload: dict[str, Any] | None = None,
     ) -> Any:
+        self._ensure_prompt_runtime_state()
         if self.model_request_count >= self.max_model_requests_per_cycle:
             raise ModelRequestLimitError(
                 f"Maximum model requests per decision cycle reached: {self.max_model_requests_per_cycle}"
@@ -633,18 +659,96 @@ class AgentController:
 
         active_tools = self._get_active_tools().schemas()
         self._log_active_tools()
-        breakdown = measure_context(
-            instructions=SYSTEM_INSTRUCTIONS,
-            tools=active_tools,
-            input_items=input_items,
-            state=state,
-            accumulated_tool_result_chars=self.accumulated_tool_result_chars,
+        cache_fields = prompt_cache_request_fields(
+            self.responses_features,
+            self.model,
+            getattr(self, "prompt_cache_mode", DEFAULT_PROMPT_CACHE_MODE),
+        )
+        cache_key = str(cache_fields.get("prompt_cache_key", "disabled"))
+        breakdown = self._measure_model_request(
+            input_items,
+            active_tools,
+            state,
+            context_payload,
             carried_context_chars=self.carried_context_chars,
-            context_payload=context_payload,
-            full_state_sent=False,
-            tool_result_chars_this_round=getattr(self, "tool_result_chars_this_round", 0),
+        )
+        print(
+            "[PROMPT] "
+            f"version={RIMGPT_PROMPT_VERSION} stablePrefixChars={len(SYSTEM_INSTRUCTIONS)} "
+            f"dynamicChars={breakdown.dynamic_input_chars} "
+            f"activeToolSchemaChars={breakdown.tool_schema_chars} cacheKey={cache_key}"
         )
         print(breakdown.as_log_line())
+        self._enforce_context_limit(breakdown)
+
+        threshold = getattr(self, "compact_threshold_tokens", DEFAULT_COMPACT_THRESHOLD_TOKENS)
+        maximum_compactions = getattr(self, "max_compactions_per_cycle", DEFAULT_MAX_COMPACTIONS_PER_CYCLE)
+        if previous_response_id and breakdown.estimated_input_tokens >= threshold:
+            can_compact = (
+                self.responses_features.compact
+                and self.compaction_count < maximum_compactions
+                and self.model_request_count + 1 < self.max_model_requests_per_cycle
+            )
+            if can_compact:
+                compacted_input = self._compact_continuation(
+                    previous_response_id,
+                    input_items,
+                    breakdown.estimated_input_tokens,
+                    cache_fields,
+                    cache_key,
+                )
+                if compacted_input is not None:
+                    input_items = compacted_input
+                    previous_response_id = None
+                    self.previous_response_id = None
+                    self.carried_context_chars = 0
+                    breakdown = self._measure_model_request(
+                        input_items,
+                        active_tools,
+                        state,
+                        context_payload,
+                        carried_context_chars=0,
+                    )
+                    print(
+                        "[COMPACTION] "
+                        f"triggered=true beforeEstimatedTokens={self._last_compaction_before_tokens} "
+                        f"afterEstimatedTokens={breakdown.estimated_input_tokens} "
+                        f"cycleCompactions={self.compaction_count}"
+                    )
+                    print(breakdown.as_log_line())
+            else:
+                reason = "unsupported"
+                if self.responses_features.compact:
+                    reason = "limitReached" if self.compaction_count >= maximum_compactions else "modelRequestLimit"
+                print(
+                    "[COMPACTION] "
+                    f"triggered=false reason={reason} beforeEstimatedTokens={breakdown.estimated_input_tokens} "
+                    f"cycleCompactions={self.compaction_count}"
+                )
+
+        self._enforce_context_limit(breakdown)
+
+        request_number = self.model_request_count + 1
+        request: dict[str, Any] = {
+            "model": self.model,
+            "instructions": SYSTEM_INSTRUCTIONS,
+            "tools": active_tools,
+            "input": input_items,
+            **cache_fields,
+        }
+        if previous_response_id:
+            request["previous_response_id"] = previous_response_id
+        response = self.client.responses.create(**request)
+        self.model_request_count = request_number
+        self.previous_response_id = getattr(response, "id", None)
+        # A continuation references prior Responses output server-side. Track
+        # the response payload we can observe so its growth remains visible to
+        # the preflight estimate without re-sending it from this process.
+        self.carried_context_chars += serialized_chars(input_items) + serialized_chars(getattr(response, "output", []))
+        self._log_response_usage(response, request_number, cache_key, "response")
+        return response
+
+    def _enforce_context_limit(self, breakdown: ContextBreakdown) -> None:
         if breakdown.estimated_input_tokens > self.max_input_tokens_per_request:
             print(
                 "[CONTEXT LIMIT] "
@@ -656,36 +760,93 @@ class AgentController:
             )
             raise ModelContextLimitError(breakdown, self.max_input_tokens_per_request)
 
-        request_number = self.model_request_count + 1
-        request: dict[str, Any] = {
-            "model": self.model,
-            "instructions": SYSTEM_INSTRUCTIONS,
-            "tools": active_tools,
-            "input": input_items,
-        }
-        if previous_response_id:
-            request["previous_response_id"] = previous_response_id
-        response = self.client.responses.create(**request)
-        self.model_request_count = request_number
-        # A continuation references prior Responses output server-side. Track
-        # the response payload we can observe so its growth remains visible to
-        # the preflight estimate without re-sending it from this process.
-        self.carried_context_chars += serialized_chars(input_items) + serialized_chars(getattr(response, "output", []))
+    def _ensure_prompt_runtime_state(self) -> None:
+        if not hasattr(self, "responses_features"):
+            self.responses_features = detect_responses_features(self.client.responses)
+        if not hasattr(self, "compaction_count"):
+            self.compaction_count = 0
+        if not hasattr(self, "previous_response_id"):
+            self.previous_response_id = None
+
+    def _measure_model_request(
+        self,
+        input_items: list[dict[str, Any]],
+        active_tools: list[dict[str, Any]],
+        state: dict[str, Any] | None,
+        context_payload: dict[str, Any] | None,
+        *,
+        carried_context_chars: int,
+    ) -> ContextBreakdown:
+        return measure_context(
+            instructions=SYSTEM_INSTRUCTIONS,
+            tools=active_tools,
+            input_items=input_items,
+            state=state,
+            accumulated_tool_result_chars=self.accumulated_tool_result_chars,
+            carried_context_chars=carried_context_chars,
+            context_payload=context_payload,
+            full_state_sent=False,
+            tool_result_chars_this_round=getattr(self, "tool_result_chars_this_round", 0),
+        )
+
+    def _compact_continuation(
+        self,
+        previous_response_id: str,
+        input_items: list[dict[str, Any]],
+        before_estimated_tokens: int,
+        cache_fields: dict[str, Any],
+        cache_key: str,
+    ) -> list[dict[str, Any]] | None:
+        self.compaction_count += 1
+        self.model_request_count += 1
+        request_number = self.model_request_count
+        self._last_compaction_before_tokens = before_estimated_tokens
+        try:
+            compacted = self.client.responses.compact(
+                model=self.model,
+                instructions=SYSTEM_INSTRUCTIONS,
+                previous_response_id=previous_response_id,
+                input=input_items,
+                **cache_fields,
+            )
+            compacted_input = compacted_output_as_input(compacted)
+        except Exception as exc:
+            print(
+                "[COMPACTION] "
+                f"triggered=true success=false beforeEstimatedTokens={before_estimated_tokens} "
+                f"cycleCompactions={self.compaction_count} error={exc}"
+            )
+            return None
+
+        self._log_response_usage(compacted, request_number, cache_key, "compaction")
+        return compacted_input
+
+    def _log_response_usage(self, response: Any, request_number: int, cache_key: str, kind: str) -> None:
         usage = extract_usage(response, self.pricing)
         if usage.estimated_cost is not None:
             self.cycle_cost += usage.estimated_cost
             self.session_cost += usage.estimated_cost
         print(
             "[COST] "
-            f"request={request_number} model={self.model} inputTokens={format_metric(usage.input_tokens)} "
+            f"request={request_number} kind={kind} model={self.model} "
+            f"inputTokens={format_metric(usage.input_tokens)} "
             f"cachedInputTokens={format_metric(usage.cached_input_tokens)} "
+            f"cacheWriteTokens={format_metric(usage.cache_write_tokens)} "
             f"uncachedInputTokens={format_metric(usage.uncached_input_tokens)} "
             f"outputTokens={format_metric(usage.output_tokens)} "
             f"estimatedRequestCost={format_cost(usage.estimated_cost)} "
             f"cycleCost={format_cost(self.cycle_cost if usage.estimated_cost is not None else None)} "
             f"sessionCost={format_cost(self.session_cost if usage.estimated_cost is not None else None)}"
         )
-        return response
+        hit_ratio = None
+        if usage.input_tokens is not None and usage.input_tokens > 0 and usage.cached_input_tokens is not None:
+            hit_ratio = usage.cached_input_tokens / usage.input_tokens
+        print(
+            "[CACHE] "
+            f"key={cache_key} cachedInputTokens={format_metric(usage.cached_input_tokens)} "
+            f"cacheWriteTokens={format_metric(usage.cache_write_tokens)} "
+            f"hitRatio={format_ratio(hit_ratio)}"
+        )
 
     def _execute_read_only_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         started = time.monotonic()
@@ -985,6 +1146,10 @@ def format_arguments(arguments: dict[str, Any]) -> str:
 
 def format_metric(value: int | None) -> str:
     return str(value) if value is not None else "unavailable"
+
+
+def format_ratio(value: float | None) -> str:
+    return f"{value:.1%}" if value is not None else "unavailable"
 
 
 def format_cost(value: float | None) -> str:

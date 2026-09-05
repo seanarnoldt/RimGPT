@@ -30,11 +30,15 @@ Development API-spend and context controls:
 export RIMGPT_MAX_INPUT_TOKENS_PER_REQUEST="30000"
 export RIMGPT_MAX_MODEL_REQUESTS_PER_CYCLE="8"
 export RIMGPT_MAX_ACTIVE_TOOL_GROUPS="3"
+export RIMGPT_PROMPT_CACHE_MODE="implicit"
+export RIMGPT_COMPACT_THRESHOLD="20000"
+export RIMGPT_MAX_COMPACTIONS_PER_CYCLE="1"
 
 # Optional pricing telemetry. Values are USD per million tokens and must be
 # updated when the selected model's pricing changes.
 export RIMGPT_INPUT_COST_PER_MILLION="..."
 export RIMGPT_CACHED_INPUT_COST_PER_MILLION="..."
+export RIMGPT_CACHE_WRITE_COST_PER_MILLION="..."
 export RIMGPT_OUTPUT_COST_PER_MILLION="..."
 ```
 
@@ -314,3 +318,52 @@ OpenAI SDK 3.8.0 was inspected for native Tool Search support. Its installed
 Python types do not expose `tool_search`, `ToolSearch`, or `defer_loading`, so
 RimGPT uses the local registry for predictable testing and debugging. Active
 schemas are supplied explicitly on every Responses continuation.
+
+## Prompt Cache and Continuation
+
+The static model policy is a byte-stable prompt prefix versioned as
+`context-memory-v1-m8`. Dynamic colony memory, summaries, deltas, triggers,
+tool results, and active capability schemas are supplied separately. The
+prompt-cache identity is `rimgpt:<prompt-version>:<model>` and never includes a
+colony ID, snapshot version, state hash, or secret.
+
+OpenAI SDK 3.8.0 supports `prompt_cache_key`, `prompt_cache_options`, cache-read
+and cache-write usage, and `responses.compact`. RimGPT uses implicit prompt
+caching with the SDK's supported `30m` TTL for GPT-5.6+ by default. Although
+the SDK exposes explicit mode, explicit breakpoints are not added;
+deterministic instructions and tool ordering keep the request architecture
+simple. Set `RIMGPT_PROMPT_CACHE_MODE=disabled` to omit cache configuration.
+
+Within one decision cycle, each tool continuation supplies the latest
+`previous_response_id`, only the new tool outputs and current compact state
+update, and the current active tool schemas. The next top-level cycle starts a
+fresh Responses request with no previous response ID. Responses conversation
+state is never persisted to StateStore or strategic memory.
+
+Native compaction is an emergency within-cycle optimization. It is attempted
+at 20,000 estimated input tokens by default, at most once per cycle. The
+returned compaction items remain opaque and replace the prior continuation
+chain for the next request. The compacted request is re-estimated, and the
+30,000-token hard guard still blocks it if necessary. A failed or unsupported
+compaction never fabricates context; normal continuation may proceed only when
+it remains under the hard limit.
+
+`[PROMPT]`, `[CACHE]`, `[COMPACTION]`, and `[COST]` telemetry distinguishes
+stable-prefix size, cache eligibility, actual cached/cache-write tokens, and
+local estimates. Local tests cannot prove a cache hit. Prompt caching affects
+cost and latency only; StateStore, StateDiff, strategic memory, and the
+decision baseline remain authoritative across cycles.
+
+Manual paid cache validation is intentionally separate from development
+testing. With RimWorld running in the background, run at most two bounded
+dry-run cycles within the cache window:
+
+```bash
+python rimgpt.py --test --max-cycles 1 --dry-run
+python rimgpt.py --test --max-cycles 1 --dry-run
+```
+
+Compare `[COST]` and `[CACHE]` lines for `inputTokens`, `cachedInputTokens`,
+`cacheWriteTokens`, `uncachedInputTokens`, output tokens, request/cycle cost,
+and hit ratio. A cache hit is not guaranteed. Remove `--dry-run` only when
+gameplay mutations are explicitly intended.

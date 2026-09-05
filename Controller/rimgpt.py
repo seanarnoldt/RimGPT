@@ -14,6 +14,11 @@ from agent_controller import (
 )
 from bridge import RimWorldBridge, RimWorldBridgeError
 from context_telemetry import DEFAULT_MAX_INPUT_TOKENS_PER_REQUEST, DEFAULT_MAX_MODEL_REQUESTS_PER_CYCLE
+from prompt_runtime import (
+    DEFAULT_COMPACT_THRESHOLD_TOKENS,
+    DEFAULT_MAX_COMPACTIONS_PER_CYCLE,
+    DEFAULT_PROMPT_CACHE_MODE,
+)
 from tool_registry import DEFAULT_MAX_ACTIVE_TOOL_GROUPS
 
 
@@ -81,6 +86,24 @@ def parse_args() -> argparse.Namespace:
         default=environment_int("RIMGPT_MAX_ACTIVE_TOOL_GROUPS", DEFAULT_MAX_ACTIVE_TOOL_GROUPS),
         help="Maximum non-core capability groups enabled during one decision cycle.",
     )
+    parser.add_argument(
+        "--prompt-cache-mode",
+        choices=("disabled", "implicit"),
+        default=os.environ.get("RIMGPT_PROMPT_CACHE_MODE", DEFAULT_PROMPT_CACHE_MODE),
+        help="Prompt caching mode. Defaults to implicit for supported models and SDKs.",
+    )
+    parser.add_argument(
+        "--compact-threshold",
+        type=int,
+        default=environment_int("RIMGPT_COMPACT_THRESHOLD", DEFAULT_COMPACT_THRESHOLD_TOKENS),
+        help="Estimated within-cycle input tokens that trigger one native compaction attempt.",
+    )
+    parser.add_argument(
+        "--max-compactions-per-cycle",
+        type=int,
+        default=environment_int("RIMGPT_MAX_COMPACTIONS_PER_CYCLE", DEFAULT_MAX_COMPACTIONS_PER_CYCLE),
+        help="Maximum native Responses compaction attempts per decision cycle.",
+    )
     return parser.parse_args()
 
 
@@ -134,6 +157,12 @@ def main() -> int:
     if args.max_active_tool_groups < 1:
         print("[ERROR] --max-active-tool-groups must be at least 1")
         return 2
+    if args.compact_threshold < 1:
+        print("[ERROR] --compact-threshold must be at least 1")
+        return 2
+    if args.max_compactions_per_cycle < 0:
+        print("[ERROR] --max-compactions-per-cycle cannot be negative")
+        return 2
     try:
         cycles = resolve_cycle_count(args)
     except ValueError as exc:
@@ -157,6 +186,9 @@ def main() -> int:
         max_input_tokens_per_request=args.max_input_tokens_per_request,
         max_model_requests_per_cycle=args.max_model_requests_per_cycle,
         max_active_tool_groups=args.max_active_tool_groups,
+        prompt_cache_mode=args.prompt_cache_mode,
+        compact_threshold_tokens=args.compact_threshold,
+        max_compactions_per_cycle=args.max_compactions_per_cycle,
     )
 
     try:

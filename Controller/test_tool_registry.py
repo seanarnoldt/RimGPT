@@ -63,6 +63,29 @@ class ReadBridge:
         self.build_reads += 1
         return {"gameLoaded": True, "options": [{"defName": "Wall", "label": "wall"}]}
 
+    def inspect_map(self, min_x, min_z, max_x, max_z):
+        return {
+            "gameLoaded": True,
+            "bounds": {"minX": min_x, "minZ": min_z, "maxX": max_x, "maxZ": max_z},
+            "terrainPalette": [{"id": 0, "terrain": "Soil", "buildable": True}],
+            "terrainRows": [{"z": min_z, "runs": [[min_x, max_x - min_x + 1, 0]]}],
+            "things": [],
+            "plantGroups": [],
+            "zones": [],
+            "truncated": False,
+        }
+
+    def check_build_placements(self, placements):
+        return {
+            "gameLoaded": True,
+            "requested": len(placements),
+            "validCount": len(placements),
+            "placements": [
+                {"index": index, "valid": True, "reason": None}
+                for index, _ in enumerate(placements)
+            ],
+        }
+
     def submit_command(self, command):
         self.submitted.append(command)
         raise AssertionError("Inactive tool reached bridge mutation routing")
@@ -144,6 +167,15 @@ class ToolRegistryTests(unittest.TestCase):
         controller._begin_cycle()
         self.assertFalse(controller._get_active_tools().is_active("draft"))
 
+    def test_identical_active_groups_serialize_tools_in_deterministic_order(self):
+        first = DEFAULT_TOOL_REGISTRY.schemas_for_groups(("core", "construction", "zones"))
+        second = DEFAULT_TOOL_REGISTRY.schemas_for_groups(("zones", "core", "construction"))
+        self.assertEqual(
+            json.dumps(first, sort_keys=True, separators=(",", ":")),
+            json.dumps(second, sort_keys=True, separators=(",", ":")),
+        )
+        self.assertEqual([tool["name"] for tool in first], [tool["name"] for tool in second])
+
     def test_inactive_tool_is_rejected_before_bridge_execution(self):
         controller = object.__new__(AgentController)
         controller.bridge = ReadBridge()
@@ -206,8 +238,25 @@ class ToolRegistryTests(unittest.TestCase):
         store = StateStore(Path(temporary.name), logger=lambda _: None)
         fake = FakeResponses([
             response("r1", [call("enable_capability", {"name": "construction"}, "enable")]),
-            response("r2", [call("list_build_options", {"category": None, "search": "wall"}, "catalog")]),
-            response("r3", [], "Done."),
+            response("r2", [call(
+                "inspect_map",
+                {"min_x": 100, "min_z": 100, "max_x": 104, "max_z": 104},
+                "inspect",
+            )]),
+            response("r3", [call(
+                "check_build_placements",
+                {
+                    "placements": [{
+                        "build_def": "Wall",
+                        "x": 101,
+                        "z": 101,
+                        "rotation": "North",
+                        "stuff_def": "WoodLog",
+                    }]
+                },
+                "validate",
+            )]),
+            response("r4", [], "Done."),
         ])
         controller = AgentController(
             bridge=ReadBridge(state),
@@ -220,11 +269,22 @@ class ToolRegistryTests(unittest.TestCase):
         controller.run_once({"type": "manualTest"})
 
         request_names = [{item["name"] for item in request["tools"]} for request in fake.calls]
+        initial_text = fake.calls[0]["input"][0]["content"][0]["text"]
         self.assertNotIn("list_build_options", request_names[0])
         self.assertIn("list_build_options", request_names[1])
         self.assertIn("list_build_options", request_names[2])
+        self.assertIn("list_build_options", request_names[3])
         self.assertEqual(fake.calls[1]["previous_response_id"], "r1")
         self.assertEqual(fake.calls[2]["previous_response_id"], "r2")
+        self.assertEqual(fake.calls[3]["previous_response_id"], "r3")
+        self.assertEqual(fake.calls[1]["input"][0]["call_id"], "enable")
+        self.assertEqual(fake.calls[2]["input"][0]["call_id"], "inspect")
+        self.assertEqual(fake.calls[3]["input"][0]["call_id"], "validate")
+        self.assertNotIn(initial_text, json.dumps(fake.calls[1]["input"], default=str))
+        self.assertNotIn(initial_text, json.dumps(fake.calls[2]["input"], default=str))
+        self.assertNotIn(initial_text, json.dumps(fake.calls[3]["input"], default=str))
+        self.assertNotIn('"operations"', json.dumps(fake.calls[1]["input"], default=str))
+        self.assertEqual(store.get_decision_baseline()["snapshot"]["version"], 20)
 
     def test_representative_grouped_cycles_remain_under_context_limit(self):
         formatter = ModelToolResultFormatter(logger=lambda _: None)
