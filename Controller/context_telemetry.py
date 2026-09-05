@@ -54,6 +54,13 @@ class ContextBreakdown:
     operations_chars: int
     colonists_chars: int
     map_overview_chars: int
+    memory_chars: int
+    summary_chars: int
+    delta_chars: int
+    trigger_chars: int
+    bootstrap: bool
+    bootstrap_chars: int
+    full_state_sent: bool
     accumulated_tool_result_chars: int
     carried_context_chars: int
     request_payload_chars: int
@@ -67,7 +74,11 @@ class ContextBreakdown:
             f"v2ToolSchemaChars={self.v2_tool_schema_chars} "
             f"v3ToolSchemaChars={self.v3_tool_schema_chars} "
             f"toolResultChars={self.accumulated_tool_result_chars} "
+            f"memoryChars={self.memory_chars} summaryChars={self.summary_chars} "
+            f"deltaChars={self.delta_chars} triggerChars={self.trigger_chars} "
+            f"bootstrap={str(self.bootstrap).lower()} bootstrapChars={self.bootstrap_chars} "
             f"fullStateChars={self.full_state_chars} operationsChars={self.operations_chars} "
+            f"fullStateSent={str(self.full_state_sent).lower()} "
             f"colonistsChars={self.colonists_chars} mapOverviewChars={self.map_overview_chars} "
             f"carriedContextChars={self.carried_context_chars} "
             f"requestEstimateChars={self.request_payload_chars} "
@@ -130,6 +141,8 @@ def measure_context(
     state: dict[str, Any] | None,
     accumulated_tool_result_chars: int,
     carried_context_chars: int,
+    context_payload: dict[str, Any] | None = None,
+    full_state_sent: bool = False,
 ) -> ContextBreakdown:
     system_chars = len(instructions)
     tool_schema_chars = serialized_chars(tools)
@@ -141,6 +154,14 @@ def measure_context(
     operations_chars = serialized_chars(state.get("operations")) if isinstance(state, dict) and "operations" in state else 0
     colonists_chars = serialized_chars(state.get("colonists")) if isinstance(state, dict) and "colonists" in state else 0
     map_overview_chars = serialized_chars(state.get("map")) if isinstance(state, dict) and "map" in state else 0
+    context_payload = context_payload if isinstance(context_payload, dict) else {}
+    memory_chars = serialized_chars(context_payload.get("strategicMemory")) if "strategicMemory" in context_payload else 0
+    summary_chars = serialized_chars(context_payload.get("currentSummary")) if "currentSummary" in context_payload else 0
+    delta_value = context_payload.get("changesSinceLastDecision", context_payload.get("changesSinceToolRound"))
+    delta_chars = serialized_chars(delta_value) if delta_value is not None else 0
+    trigger_chars = serialized_chars(context_payload.get("trigger")) if "trigger" in context_payload else 0
+    bootstrap = bool(context_payload.get("bootstrap"))
+    bootstrap_chars = serialized_chars(context_payload.get("bootstrapState")) if "bootstrapState" in context_payload else 0
     # Tool-result bytes are already present in either this request's dynamic
     # input or the known continuation history. Keep them separate in the
     # breakdown, but do not count them twice in the total estimate.
@@ -155,6 +176,13 @@ def measure_context(
         operations_chars=operations_chars,
         colonists_chars=colonists_chars,
         map_overview_chars=map_overview_chars,
+        memory_chars=memory_chars,
+        summary_chars=summary_chars,
+        delta_chars=delta_chars,
+        trigger_chars=trigger_chars,
+        bootstrap=bootstrap,
+        bootstrap_chars=bootstrap_chars,
+        full_state_sent=full_state_sent,
         accumulated_tool_result_chars=accumulated_tool_result_chars,
         carried_context_chars=carried_context_chars,
         request_payload_chars=request_payload_chars,

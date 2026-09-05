@@ -77,6 +77,12 @@ class ContextTelemetryTests(unittest.TestCase):
             state=state,
             accumulated_tool_result_chars=123,
             carried_context_chars=456,
+            context_payload={
+                "strategicMemory": {"currentGoals": ["Survive"]},
+                "currentSummary": {"snapshotVersion": 7},
+                "changesSinceLastDecision": {"changes": {}},
+                "trigger": {"type": "manualTest"},
+            },
         )
 
         self.assertGreater(breakdown.tool_schema_chars, 0)
@@ -86,6 +92,12 @@ class ContextTelemetryTests(unittest.TestCase):
         self.assertGreater(breakdown.colonists_chars, 0)
         self.assertGreater(breakdown.map_overview_chars, 0)
         self.assertEqual(breakdown.accumulated_tool_result_chars, 123)
+        self.assertGreater(breakdown.memory_chars, 0)
+        self.assertGreater(breakdown.summary_chars, 0)
+        self.assertGreater(breakdown.delta_chars, 0)
+        self.assertGreater(breakdown.trigger_chars, 0)
+        self.assertFalse(breakdown.full_state_sent)
+        self.assertIn("fullStateSent=false", breakdown.as_log_line())
         self.assertGreater(breakdown.estimated_input_tokens, 0)
 
     def test_ninth_request_is_blocked_at_cycle_limit_of_eight(self):

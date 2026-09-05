@@ -4,6 +4,28 @@ from typing import Any
 TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
+        "name": "get_colony_state",
+        "description": "Read one bounded section from the latest authoritative local RimWorld state. Use the compact summary and decision delta first; request only the exact section needed for the current decision. Live state overrides strategic memory.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "section": {
+                    "type": "string",
+                    "enum": [
+                        "pawns", "work", "resources", "research", "buildings", "zones",
+                        "equipment", "apparel", "beds", "worktables", "bills", "power",
+                        "threats", "environment",
+                    ],
+                    "description": "The single current-state section to retrieve.",
+                }
+            },
+            "required": ["section"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
         "name": "inspect_map",
         "description": "Read-only inspection of a bounded current-map RimWorld x/z rectangle, max about 40x40 cells. Use this before important construction, zones, mining, or growing decisions. Hidden/fogged contents are not exposed.",
         "strict": True,
@@ -699,6 +721,7 @@ TOOLS.extend(
 
 
 READ_ONLY_TOOLS = {
+    "get_colony_state",
     "inspect_map",
     "list_build_options",
     "get_build_info",

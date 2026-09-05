@@ -152,7 +152,7 @@ def main() -> int:
         for cycle_index in range(cycles):
             if cycles > 1:
                 print(f"[MODEL] Development test cycle {cycle_index + 1}/{cycles}")
-            controller.run_once()
+            controller.run_once({"type": "manualTest" if args.test else "manualCycle"})
     except RimWorldBridgeError as exc:
         print(f"[ERROR] {exc}")
         return 1

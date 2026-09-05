@@ -72,7 +72,11 @@ with `--dry-run` when model tool proposals should not alter RimWorld:
 python rimgpt.py --test --dry-run
 ```
 
-The script checks bridge health, retrieves `/state`, sends the state to the OpenAI Responses API with the current RimGPT function tools, executes requested tool calls through the bridge, reports command results, prints the model's final assessment, and exits.
+The script checks bridge health, retrieves and persists the full authoritative
+`/state` locally, sends a compact decision context to the OpenAI Responses API,
+executes requested tool calls through the bridge, reports command results,
+prints the model's final assessment, and exits. The full snapshot is not sent to
+the model.
 
 State/control v2B adds compact spatial context and early colony-building tools:
 
@@ -123,17 +127,18 @@ Snapshots are written atomically. Invalid JSON, unsupported StateStore formats,
 schema changes, or identity mismatches are rejected safely; questionable files
 are retained with an `.invalid-...` suffix for diagnosis. `current_state` is
 updated from every authoritative bridge fetch. `decision_baseline` is only
-advanced after a normally completed model decision cycle, never on ordinary
-state refreshes.
+advanced after the model reaches a completed final response and the controller
+fetches one final authoritative state. Token or request limits, API errors,
+incomplete responses, unresolved commands, and ordinary state or command
+refreshes leave the old baseline intact.
 
 ## Semantic State Deltas
 
 `StateStore.get_changes_since_last_decision()` compares the persisted
 `decision_baseline` with `current_state` through `StateDiff`. Reading a delta is
-side-effect free and does not advance the baseline. The controller currently
-measures and logs these deltas locally, but still sends the complete state to
-the model; delta-only model context is intentionally deferred to a later
-milestone.
+side-effect free and does not advance the baseline. The controller sends this
+delta as part of its compact initial decision context; the full current snapshot
+remains local.
 
 Normal output contains `fromSnapshot`, `toSnapshot`, `elapsedTicks`, and a
 deterministically ordered `changes` object. Stable-ID collections are matched by
@@ -223,5 +228,26 @@ no/need/build research-bench entries when a completed research bench exists,
 colonist-weapon entries when every current colonist has a primary weapon, and a
 small explicit set of rice/potato/corn/cotton/healroot growing-zone goals when
 the matching nonempty zone exists. Vague plans such as refrigeration or power
-are never inferred complete. Memory is not yet sent to the model; model-driven
-memory updates are intentionally deferred to a later milestone.
+are never inferred complete. Memory is included in the compact model context,
+with instructions that current live state always overrides it. Model-driven
+memory write-back remains deferred.
+
+## Compact Decision Context
+
+The initial dynamic input contains `strategicMemory`, a deterministic
+`currentSummary`, `changesSinceLastDecision`, and a small `trigger`. When no
+compatible decision baseline exists, it additionally contains a bounded
+`bootstrapState` with key pawn capabilities, strategic resources, research,
+visible threats, important structures, zones, power, and a compact map overview.
+It never falls back to the raw `/state` payload.
+
+The read-only `get_colony_state(section)` model tool retrieves one bounded view
+from the latest authoritative `StateStore` snapshot. Allowed sections are
+`pawns`, `work`, `resources`, `research`, `buildings`, `zones`, `equipment`,
+`apparel`, `beds`, `worktables`, `bills`, `power`, `threats`, and `environment`.
+Each result has a snapshot version and truncation marker, is capped at 12,000
+serialized characters by default, and cannot traverse arbitrary state paths.
+
+`[CONTEXT]` telemetry reports memory, summary, delta, trigger, bootstrap, and
+full-state diagnostic sizes separately. `fullStateSent=false` is explicit on
+every model request.

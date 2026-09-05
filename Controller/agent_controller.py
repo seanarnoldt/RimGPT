@@ -1,3 +1,4 @@
+import copy
 import json
 import time
 from typing import Any
@@ -5,6 +6,7 @@ from typing import Any
 from openai import OpenAI
 
 from bridge import CommandStatusUnreachable, RimWorldBridge, RimWorldBridgeError
+from colony_state_query import ColonyStateQuery
 from context_telemetry import (
     DEFAULT_MAX_INPUT_TOKENS_PER_REQUEST,
     DEFAULT_MAX_MODEL_REQUESTS_PER_CYCLE,
@@ -15,6 +17,8 @@ from context_telemetry import (
     measure_context,
     serialized_chars,
 )
+from decision_context import DecisionContextBuilder, DecisionContextError, build_current_summary, serialize_context
+from state_diff import StateDiff
 from state_store import StateStore, StateStoreError
 from tools import TOOLS, convert_blueprint_placements, is_read_only_tool, tool_call_to_bridge_command
 
@@ -38,9 +42,15 @@ You may now allow starting supplies, choose research, designate visible mining/c
 
 You may inspect bounded visible map regions, create stockpile and growing zones, place construction blueprints, cancel player orders, and designate visible player structures for deconstruction.
 
-Treat the supplied RimWorld state as authoritative.
+The initial decision context is compact. currentSummary is current strategic state, and changesSinceLastDecision contains meaningful changes since the last successfully completed strategic decision.
 
-Do not invent pawn IDs, map coordinates, work types, resources, threats, or other game state.
+strategicMemory records prior plans and decisions; it is not current authoritative state. Live state always overrides memory.
+
+If exact current information is needed, call get_colony_state for only the relevant section or use an existing targeted read tool. Do not query every state section reflexively. Start with the summary and delta, then retrieve only details whose uncertainty matters to this decision.
+
+Do not invent pawn IDs, resource counts, building existence, map coordinates, work types, threats, or other game state. Use targeted validators and catalog tools when planning construction or zones.
+
+It is valid to take no action when the colony is stable.
 
 Use colonists[].work as the authoritative work capability and priority view. Never assign work if capable=false. Do not assign a work priority if the current priority already equals the desired value. Repeat set_work_priority only if a fresh authoritative state shows it did not persist.
 
@@ -107,6 +117,8 @@ class AgentController:
         self.pricing = pricing or Pricing.from_environment()
         self.client = client or OpenAI()
         self.state_store = state_store or StateStore()
+        self.context_builder = DecisionContextBuilder(self.state_store)
+        self.colony_state_query = ColonyStateQuery(self.state_store)
         self.uncertain_commands: dict[str, dict[str, Any]] = {}
         self.current_state: dict[str, Any] | None = None
         self._last_batch_had_write = False
@@ -120,7 +132,7 @@ class AgentController:
         self.cycle_cost = 0.0
         self.session_cost = 0.0
 
-    def run_once(self) -> None:
+    def run_once(self, trigger: dict[str, Any] | None = None) -> None:
         self._begin_cycle()
         print("[STATE] Checking RimGPT bridge health")
         health = self.bridge.health()
@@ -129,7 +141,13 @@ class AgentController:
         state = self.bridge.get_state()
         self.current_state = self._accept_authoritative_state(state)
         print(f"[STATE] {summarize_state(state)}")
-        self._measure_state_delta()
+
+        try:
+            decision_context = self._get_context_builder().build(trigger)
+        except DecisionContextError as exc:
+            self.termination_reason = str(exc)
+            print(f"[ERROR] Decision cycle terminated: {exc}")
+            return
 
         print(f"[MODEL] Requesting one decision cycle from {self.model}")
         initial_input = [
@@ -139,17 +157,18 @@ class AgentController:
                     {
                         "type": "input_text",
                         "text": (
-                            "Review this RimWorld State API snapshot and decide whether to use the "
-                            "available tools. After any tool results, provide a concise final assessment.\n\n"
-                            + json.dumps(state, separators=(",", ":"))
+                            "Review this compact RimGPT decision context and decide whether to use the "
+                            "available tools. Retrieve bounded current detail only when needed. After any "
+                            "tool results, provide a concise final assessment.\n\n"
+                            + serialize_context(decision_context)
                         ),
                     }
                 ],
             }
         ]
         try:
-            response = self._request_model(initial_input, state=state)
-        except (ModelContextLimitError, ModelRequestLimitError) as exc:
+            response = self._request_model(initial_input, state=state, context_payload=decision_context)
+        except Exception as exc:
             self.termination_reason = str(exc)
             print(f"[ERROR] {exc}")
             return
@@ -161,11 +180,24 @@ class AgentController:
         else:
             print("[MODEL] Final assessment: no text returned")
 
-        if self.termination_reason is None and self.current_state is not None:
+        if not self._response_completed(final_response):
+            response_status = getattr(final_response, "status", None)
+            self.termination_reason = f"model response did not complete successfully (status={response_status})"
+            print(f"[ERROR] Decision cycle terminated: {self.termination_reason}")
+
+        if self.uncertain_commands and self.termination_reason is None:
+            self.termination_reason = f"{len(self.uncertain_commands)} command(s) remained uncertain at cycle end"
+            print(f"[ERROR] Decision cycle terminated: {self.termination_reason}")
+
+        if self.termination_reason is None:
             try:
-                self.state_store.set_decision_baseline(self.current_state)
-            except StateStoreError as exc:
-                print(f"[WARNING] Could not persist decision baseline: {exc}")
+                final_state = self.bridge.get_state()
+                self.current_state = self._accept_authoritative_state(final_state)
+                print(f"[STATE] Final authoritative {summarize_state(final_state)}")
+                self.state_store.set_decision_baseline(final_state)
+            except (RimWorldBridgeError, StateStoreError) as exc:
+                self.termination_reason = f"could not confirm final authoritative state: {exc}"
+                print(f"[ERROR] Decision baseline not advanced: {exc}")
 
     def _handle_tool_rounds(self, response: Any) -> Any:
         self._ensure_safety_state()
@@ -189,13 +221,19 @@ class AgentController:
             self.total_tool_calls += len(tool_calls)
             print(f"[MODEL] Tool-call round {round_index + 1}: {len(tool_calls)} call(s)")
             round_start_version = snapshot_version(self.current_state)
+            round_start_state = copy.deepcopy(self.current_state)
             outputs = self._execute_tool_call_batch(tool_calls)
             outputs.extend(self._reconcile_uncertain_commands())
             if self.termination_reason is not None:
                 print(f"[ERROR] Tool-call loop terminated: {self.termination_reason}")
                 return current
 
-            post_action_state = self._fresh_state_message(round_start_version, self._last_batch_had_write and not self.dry_run)
+            post_action_state, post_action_context = self._fresh_state_message(
+                round_start_version,
+                self._last_batch_had_write and not self.dry_run,
+                before_state=round_start_state,
+                include_context=True,
+            )
 
             continuation_input = outputs + [post_action_state]
             self.accumulated_tool_result_chars += sum(
@@ -207,8 +245,9 @@ class AgentController:
                     continuation_input,
                     state=self.current_state,
                     previous_response_id=current.id,
+                    context_payload=post_action_context,
                 )
-            except (ModelContextLimitError, ModelRequestLimitError) as exc:
+            except Exception as exc:
                 self.termination_reason = str(exc)
                 print(f"[ERROR] Tool-call loop terminated: {exc}")
                 return current
@@ -422,6 +461,25 @@ class AgentController:
                 print(f"[WARNING] Could not persist authoritative state: {exc}")
         return state
 
+    def _get_context_builder(self) -> DecisionContextBuilder:
+        builder = getattr(self, "context_builder", None)
+        if builder is None:
+            builder = DecisionContextBuilder(self.state_store)
+            self.context_builder = builder
+        return builder
+
+    def _get_colony_state_query(self) -> ColonyStateQuery:
+        query = getattr(self, "colony_state_query", None)
+        if query is None:
+            query = ColonyStateQuery(self.state_store)
+            self.colony_state_query = query
+        return query
+
+    @staticmethod
+    def _response_completed(response: Any) -> bool:
+        status = getattr(response, "status", None)
+        return status in (None, "completed")
+
     def _measure_state_delta(self) -> None:
         store = getattr(self, "state_store", None)
         if store is None:
@@ -439,6 +497,7 @@ class AgentController:
         *,
         state: dict[str, Any] | None,
         previous_response_id: str | None = None,
+        context_payload: dict[str, Any] | None = None,
     ) -> Any:
         if self.model_request_count >= self.max_model_requests_per_cycle:
             raise ModelRequestLimitError(
@@ -452,6 +511,8 @@ class AgentController:
             state=state,
             accumulated_tool_result_chars=self.accumulated_tool_result_chars,
             carried_context_chars=self.carried_context_chars,
+            context_payload=context_payload,
+            full_state_sent=False,
         )
         print(breakdown.as_log_line())
         if breakdown.estimated_input_tokens > self.max_input_tokens_per_request:
@@ -460,6 +521,7 @@ class AgentController:
                 f"system={breakdown.system_chars} dynamic={breakdown.dynamic_input_chars} "
                 f"tools={breakdown.tool_schema_chars} toolResults={breakdown.accumulated_tool_result_chars} "
                 f"fullState={breakdown.full_state_chars} operations={breakdown.operations_chars} "
+                f"fullStateSent={str(breakdown.full_state_sent).lower()} "
                 f"estimatedInputTokens={breakdown.estimated_input_tokens}"
             )
             raise ModelContextLimitError(breakdown, self.max_input_tokens_per_request)
@@ -498,7 +560,9 @@ class AgentController:
     def _execute_read_only_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         started = time.monotonic()
         try:
-            if name == "inspect_map":
+            if name == "get_colony_state":
+                result = self._get_colony_state_query().get(arguments["section"])
+            elif name == "inspect_map":
                 result = self.bridge.inspect_map(
                     arguments["min_x"],
                     arguments["min_z"],
@@ -580,7 +644,16 @@ class AgentController:
 
         return updates
 
-    def _fresh_state_message(self, after_version: int, require_newer: bool) -> dict[str, Any]:
+    def _fresh_state_message(
+        self,
+        after_version: int,
+        require_newer: bool,
+        *,
+        before_state: dict[str, Any] | None = None,
+        include_context: bool = False,
+    ) -> dict[str, Any] | tuple[dict[str, Any], dict[str, Any]]:
+        stale = False
+        note: str | None = None
         try:
             if require_newer:
                 state = self.bridge.wait_for_state_after(after_version, timeout_ms=3000)
@@ -589,36 +662,53 @@ class AgentController:
                     self.current_state = self._accept_authoritative_state(stale_state)
                     print(f"[WARNING] No post-command snapshot newer than version {after_version}")
                     print(f"[STATE] Post-action stale {summarize_state(stale_state)}")
-                    text = (
+                    stale = True
+                    note = (
                         f"No post-command snapshot newer than version {after_version} was available. "
-                        "This state may be stale; do not treat it as authoritative proof that completed commands failed.\n\n"
-                        + json.dumps(stale_state, separators=(",", ":"))
+                        "This compact state may be stale; do not treat it as proof that completed commands failed."
                     )
                 else:
                     self.current_state = self._accept_authoritative_state(state)
                     new_version = snapshot_version(state)
                     print(f"[STATE] Post-action authoritative version={new_version} {summarize_state(state)}")
-                    text = (
-                        "Fresh authoritative RimWorld state generated after the completed command batch. "
-                        "Use this state, not only action acknowledgements, for your next assessment.\n\n"
-                        + json.dumps(state, separators=(",", ":"))
-                    )
+                    note = "Fresh authoritative state after the completed command batch."
             else:
                 state = self.bridge.get_state()
                 self.current_state = self._accept_authoritative_state(state)
                 print(f"[STATE] Current {summarize_state(state)}")
-                text = (
-                    "Current RimWorld state after a read-only/no-mutation tool round.\n\n"
-                    + json.dumps(state, separators=(",", ":"))
-                )
+                note = "Current authoritative state after a read-only/no-mutation tool round."
         except RimWorldBridgeError as exc:
             print(f"[ERROR] Could not retrieve post-action state: {exc}")
-            text = f"Fresh RimWorld state could not be retrieved after actions: {exc}"
+            context = {
+                "contextVersion": 1,
+                "postToolState": True,
+                "authoritative": False,
+                "error": f"Fresh RimWorld state could not be retrieved after actions: {exc}",
+            }
+        else:
+            store = getattr(self, "state_store", None)
+            if store is not None:
+                context = self._get_context_builder().build_post_tool_context(before_state, stale=stale, note=note)
+            else:
+                context = {
+                    "contextVersion": 1,
+                    "postToolState": True,
+                    "authoritative": not stale,
+                    "currentSummary": build_current_summary(self.current_state or {}),
+                    "changesSinceToolRound": StateDiff.compare(before_state, self.current_state),
+                    "note": note,
+                }
 
-        return {
+        prefix = "Fresh authoritative RimWorld state" if not stale and context.get("authoritative") else "RimWorld state may be stale"
+        text = prefix + ". Compact post-tool context:\n" + serialize_context(context)
+
+        message = {
             "role": "user",
             "content": [{"type": "input_text", "text": text}],
         }
+        if include_context:
+            return message, context
+        return message
 
 
 def function_output(call_id: str, result: dict[str, Any]) -> dict[str, Any]:
