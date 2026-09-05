@@ -251,3 +251,38 @@ serialized characters by default, and cannot traverse arbitrary state paths.
 `[CONTEXT]` telemetry reports memory, summary, delta, trigger, bootstrap, and
 full-state diagnostic sizes separately. `fullStateSent=false` is explicit on
 every model request.
+
+## Model Tool Results
+
+Bridge and controller results remain unchanged for HTTP clients and local
+diagnostics. Before a result is returned to the model,
+`ModelToolResultFormatter` creates a deterministic bounded view:
+
+- Successful commands contain only the semantic fields changed by the command.
+- Completed command IDs, timing, status history, and original command echoes are
+  retained internally but omitted from the model result.
+- Blueprint and validator batches summarize successes and list only failures.
+- Zone results report accepted counts and exceptional cells instead of echoing
+  every successful cell.
+- Catalogs retain command def names, costs, requirements, and availability, but
+  are bounded to 12,000 serialized characters with explicit truncation.
+- `inspect_map` deduplicates terrain properties into a palette. Each row contains
+  runs encoded as `[xStart,length,terrainPaletteId]`; non-plant entities remain
+  explicit and plants are grouped by identical strategic properties with exact
+  `[x,z]` cells. Buildability, terrain affordances, zone eligibility, roofs,
+  obstacles, stable entity IDs, and coordinates remain available.
+
+If exact terrain encoding cannot fit safely, the formatter asks for a smaller
+region instead of returning incomplete geometry. Other oversized results retain
+failures first and set `truncated=true`. Formatter failures produce a bounded
+conservative failure result and never fabricate success.
+
+Each tool logs a size-only line:
+
+```text
+[TOOL RESULT] tool=... rawChars=... modelChars=... compressionRatio=... success=...
+```
+
+Per-request `[CONTEXT]` logs include `toolResultCharsThisRound` and
+`toolResultCharsAccumulated`. Raw results are retained in a bounded in-memory
+diagnostic list for the current cycle and are never dumped into normal logs.

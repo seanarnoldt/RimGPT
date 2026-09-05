@@ -154,8 +154,13 @@ class BatchCommandTests(unittest.TestCase):
         self.assertEqual([output["call_id"] for output in outputs], ["call-1", "call-2"])
         first_result = json.loads(outputs[0]["output"])
         second_result = json.loads(outputs[1]["output"])
-        self.assertEqual(first_result["commandId"], "cmd-1")
-        self.assertEqual(second_result["commandId"], "cmd-2")
+        self.assertEqual(first_result, {"success": True, "speed": 1})
+        self.assertEqual(
+            second_result,
+            {"success": True, "pawnId": "Thing_Human123", "drafted": True},
+        )
+        self.assertEqual(controller.raw_tool_results[0]["result"]["command"]["command"], "setSpeed")
+        self.assertEqual(controller.raw_tool_results[1]["result"]["command"]["command"], "draft")
 
 
 if __name__ == "__main__":

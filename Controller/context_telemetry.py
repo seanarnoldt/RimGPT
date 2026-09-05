@@ -61,6 +61,7 @@ class ContextBreakdown:
     bootstrap: bool
     bootstrap_chars: int
     full_state_sent: bool
+    tool_result_chars_this_round: int
     accumulated_tool_result_chars: int
     carried_context_chars: int
     request_payload_chars: int
@@ -73,7 +74,8 @@ class ContextBreakdown:
             f"toolSchemaChars={self.tool_schema_chars} "
             f"v2ToolSchemaChars={self.v2_tool_schema_chars} "
             f"v3ToolSchemaChars={self.v3_tool_schema_chars} "
-            f"toolResultChars={self.accumulated_tool_result_chars} "
+            f"toolResultCharsThisRound={self.tool_result_chars_this_round} "
+            f"toolResultCharsAccumulated={self.accumulated_tool_result_chars} "
             f"memoryChars={self.memory_chars} summaryChars={self.summary_chars} "
             f"deltaChars={self.delta_chars} triggerChars={self.trigger_chars} "
             f"bootstrap={str(self.bootstrap).lower()} bootstrapChars={self.bootstrap_chars} "
@@ -143,6 +145,7 @@ def measure_context(
     carried_context_chars: int,
     context_payload: dict[str, Any] | None = None,
     full_state_sent: bool = False,
+    tool_result_chars_this_round: int = 0,
 ) -> ContextBreakdown:
     system_chars = len(instructions)
     tool_schema_chars = serialized_chars(tools)
@@ -183,6 +186,7 @@ def measure_context(
         bootstrap=bootstrap,
         bootstrap_chars=bootstrap_chars,
         full_state_sent=full_state_sent,
+        tool_result_chars_this_round=tool_result_chars_this_round,
         accumulated_tool_result_chars=accumulated_tool_result_chars,
         carried_context_chars=carried_context_chars,
         request_payload_chars=request_payload_chars,

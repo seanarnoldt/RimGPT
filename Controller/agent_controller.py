@@ -18,6 +18,7 @@ from context_telemetry import (
     serialized_chars,
 )
 from decision_context import DecisionContextBuilder, DecisionContextError, build_current_summary, serialize_context
+from model_tool_result import ModelToolResultFormatter
 from state_diff import StateDiff
 from state_store import StateStore, StateStoreError
 from tools import TOOLS, convert_blueprint_placements, is_read_only_tool, tool_call_to_bridge_command
@@ -78,6 +79,12 @@ Terrain support matters for buildings. Use inspect_map terrain affordances and b
 
 Before placing a large construction batch, preferably call check_build_placements with the planned placements. If several cells fail validation, adjust the plan instead of repeatedly attempting the same cells.
 
+inspect_map uses a terrain palette with row runs encoded as [xStart,length,terrainPaletteId], plus exact explicit things and grouped plant coordinate cells. Use inspect_map to identify a candidate plan, then use the exact build or zone validator before mutation.
+
+Successful batch and validator results summarize successes and list only failures. Missing per-cell success entries do not mean execution was omitted. If truncated=true, query a smaller region or narrower catalog when omitted detail matters.
+
+The controller automatically supplies a compact authoritative post-tool state update. Do not re-query a colony-state section only to confirm a successful command unless the next decision requires exact details from that section.
+
 Do not assume every visually open cell can support every structure.
 
 Avoid building steel walls at game start unless there is a specific strategic reason. Wood is generally less valuable as a long-term material, but steel is strategically important for machinery and early infrastructure.
@@ -119,6 +126,7 @@ class AgentController:
         self.state_store = state_store or StateStore()
         self.context_builder = DecisionContextBuilder(self.state_store)
         self.colony_state_query = ColonyStateQuery(self.state_store)
+        self.tool_result_formatter = ModelToolResultFormatter()
         self.uncertain_commands: dict[str, dict[str, Any]] = {}
         self.current_state: dict[str, Any] | None = None
         self._last_batch_had_write = False
@@ -128,6 +136,8 @@ class AgentController:
         self.termination_reason: str | None = None
         self.model_request_count = 0
         self.accumulated_tool_result_chars = 0
+        self.tool_result_chars_this_round = 0
+        self.raw_tool_results: list[dict[str, Any]] = []
         self.carried_context_chars = 0
         self.cycle_cost = 0.0
         self.session_cost = 0.0
@@ -236,9 +246,8 @@ class AgentController:
             )
 
             continuation_input = outputs + [post_action_state]
-            self.accumulated_tool_result_chars += sum(
-                serialized_chars(output) for output in outputs if output.get("type") == "function_call_output"
-            )
+            self.tool_result_chars_this_round = model_result_chars(outputs)
+            self.accumulated_tool_result_chars += self.tool_result_chars_this_round
             print("[MODEL] Sending tool results and fresh state back to model")
             try:
                 current = self._request_model(
@@ -273,7 +282,7 @@ class AgentController:
             except json.JSONDecodeError as exc:
                 result = {"success": False, "error": f"Invalid tool arguments JSON: {exc}"}
                 print(f"[ERROR] {name}: {result['error']}")
-                outputs[index] = function_output(call_id, result)
+                outputs[index] = self._function_output(call_id, name, result, {})
                 continue
 
             print(f"[ACTION] {name}({format_arguments(arguments)})")
@@ -283,11 +292,11 @@ class AgentController:
             except Exception as exc:
                 if is_read_only_tool(name):
                     result = self._execute_read_only_tool(name, arguments)
-                    outputs[index] = function_output(call_id, result)
+                    outputs[index] = self._function_output(call_id, name, result, arguments)
                 else:
                     result = {"success": False, "error": str(exc)}
                     print(f"[ERROR] {name}: {result['error']}")
-                    outputs[index] = function_output(call_id, result)
+                    outputs[index] = self._function_output(call_id, name, result, arguments)
                     self._record_failed_call(name, arguments, result)
                 continue
 
@@ -299,7 +308,7 @@ class AgentController:
                     "command": bridge_command,
                 }
                 print(f"[RESULT] dry-run proposed {bridge_command}")
-                outputs[index] = function_output(call_id, result)
+                outputs[index] = self._function_output(call_id, name, result, arguments)
                 continue
 
             if self.write_commands >= getattr(self, "max_write_commands", DEFAULT_MAX_WRITE_COMMANDS):
@@ -313,7 +322,7 @@ class AgentController:
                 }
                 self.termination_reason = f"max write commands reached ({getattr(self, 'max_write_commands', DEFAULT_MAX_WRITE_COMMANDS)})"
                 print(f"[ERROR] {name}: {result['error']}")
-                outputs[index] = function_output(call_id, result)
+                outputs[index] = self._function_output(call_id, name, result, arguments)
                 self._record_failed_call(name, arguments, result)
                 continue
 
@@ -357,17 +366,23 @@ class AgentController:
                     }
                     self.uncertain_commands[exc.command_id] = {
                         "call_id": item["call_id"],
+                        "name": item["name"],
+                        "arguments": item.get("arguments", {}),
                         "command": item["command"],
                         "started_at": time.monotonic() - exc.elapsed,
                         "reason": "unknown-unreachable",
                     }
                     print(f"[WARNING] command status unknown/unreachable after {exc.elapsed:.1f}s: {exc.command_id}")
-                    outputs[item["index"]] = function_output(item["call_id"], result)
+                    outputs[item["index"]] = self._function_output(
+                        item["call_id"], item["name"], result, item.get("arguments", {})
+                    )
                     self._record_failed_call(item["name"], item.get("arguments", {}), result)
                 except RimWorldBridgeError as exc:
                     result = {"success": False, "error": str(exc), "command": item["command"]}
                     print(f"[ERROR] {exc}")
-                    outputs[item["index"]] = function_output(item["call_id"], result)
+                    outputs[item["index"]] = self._function_output(
+                        item["call_id"], item["name"], result, item.get("arguments", {})
+                    )
                     self._record_failed_call(item["name"], item.get("arguments", {}), result)
 
             if submitted:
@@ -388,12 +403,17 @@ class AgentController:
                     result["command"] = item["command"]
                     elapsed = float(result.get("elapsedSeconds", 0.0))
                     if result.get("status") == "completed":
-                        print(f"[RESULT] {command_id} completed in {elapsed:.2f}s: {result}")
+                        print(
+                            f"[RESULT] {command_id} completed in {elapsed:.2f}s "
+                            f"success={str(result.get('success') is True).lower()}"
+                        )
                         if result.get("success") is False:
                             self._record_failed_call(item["name"], item.get("arguments", {}), result)
                     elif result.get("status") == "queued":
                         self.uncertain_commands[command_id] = {
                             "call_id": item["call_id"],
+                            "name": item["name"],
+                            "arguments": item.get("arguments", {}),
                             "command": item["command"],
                             "started_at": item["started_at"],
                             "reason": "still-queued",
@@ -402,13 +422,17 @@ class AgentController:
                     else:
                         self.uncertain_commands[command_id] = {
                             "call_id": item["call_id"],
+                            "name": item["name"],
+                            "arguments": item.get("arguments", {}),
                             "command": item["command"],
                             "started_at": item["started_at"],
                             "reason": "unknown-unreachable",
                         }
                         print(f"[WARNING] command status unknown/unreachable after {elapsed:.1f}s: {command_id}")
 
-                    outputs[item["index"]] = function_output(item["call_id"], result)
+                    outputs[item["index"]] = self._function_output(
+                        item["call_id"], item["name"], result, item.get("arguments", {})
+                    )
 
         return [output for output in outputs if output is not None]
 
@@ -449,6 +473,8 @@ class AgentController:
         self.termination_reason = None
         self.model_request_count = 0
         self.accumulated_tool_result_chars = 0
+        self.tool_result_chars_this_round = 0
+        self.raw_tool_results = []
         self.carried_context_chars = 0
         self.cycle_cost = 0.0
 
@@ -474,6 +500,48 @@ class AgentController:
             query = ColonyStateQuery(self.state_store)
             self.colony_state_query = query
         return query
+
+    def _get_tool_result_formatter(self) -> ModelToolResultFormatter:
+        formatter = getattr(self, "tool_result_formatter", None)
+        if formatter is None:
+            formatter = ModelToolResultFormatter()
+            self.tool_result_formatter = formatter
+        return formatter
+
+    def _model_tool_result(
+        self,
+        name: str,
+        raw_result: dict[str, Any],
+        arguments: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        retained = getattr(self, "raw_tool_results", None)
+        if retained is None:
+            retained = []
+            self.raw_tool_results = retained
+        retained.append(
+            {
+                "tool": name,
+                "arguments": copy.deepcopy(arguments or {}),
+                "result": copy.deepcopy(raw_result),
+            }
+        )
+        retention_limit = getattr(self, "max_total_tool_calls", DEFAULT_MAX_TOTAL_TOOL_CALLS)
+        if len(retained) > retention_limit:
+            del retained[: len(retained) - retention_limit]
+        model_result, telemetry = self._get_tool_result_formatter().format_with_telemetry(
+            name, raw_result, arguments
+        )
+        print(telemetry.as_log_line())
+        return model_result
+
+    def _function_output(
+        self,
+        call_id: str,
+        name: str,
+        raw_result: dict[str, Any],
+        arguments: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return function_output(call_id, self._model_tool_result(name, raw_result, arguments))
 
     @staticmethod
     def _response_completed(response: Any) -> bool:
@@ -513,6 +581,7 @@ class AgentController:
             carried_context_chars=self.carried_context_chars,
             context_payload=context_payload,
             full_state_sent=False,
+            tool_result_chars_this_round=getattr(self, "tool_result_chars_this_round", 0),
         )
         print(breakdown.as_log_line())
         if breakdown.estimated_input_tokens > self.max_input_tokens_per_request:
@@ -617,15 +686,24 @@ class AgentController:
                     "command": pending.get("command"),
                 }
                 print(f"[WARNING] command status still unknown/unreachable after {elapsed:.1f}s: {command_id}")
-                updates.append(reconciliation_message(result))
+                model_result = self._model_tool_result(
+                    str(pending.get("name") or "command_status"), result, pending.get("arguments", {})
+                )
+                updates.append(reconciliation_message(model_result))
                 continue
 
             status_value = status.get("status")
             elapsed = status.get("elapsedSeconds", 0.0)
             if status_value == "completed":
-                print(f"[RESULT] reconciled after {elapsed:.1f}s: {status}")
+                print(
+                    f"[RESULT] reconciled after {elapsed:.1f}s "
+                    f"success={str(status.get('success') is True).lower()}"
+                )
                 status["reconciled"] = True
-                updates.append(reconciliation_message(status))
+                model_result = self._model_tool_result(
+                    str(pending.get("name") or "command_status"), status, pending.get("arguments", {})
+                )
+                updates.append(reconciliation_message(model_result))
                 del self.uncertain_commands[command_id]
             elif status_value == "queued":
                 status["success"] = None
@@ -633,14 +711,20 @@ class AgentController:
                 status["message"] = "Command is still queued during reconciliation."
                 status["command"] = pending.get("command")
                 print(f"[WARNING] command still queued after {elapsed:.1f}s: {command_id}")
-                updates.append(reconciliation_message(status))
+                model_result = self._model_tool_result(
+                    str(pending.get("name") or "command_status"), status, pending.get("arguments", {})
+                )
+                updates.append(reconciliation_message(model_result))
             else:
                 status["success"] = None
                 status["uncertain"] = True
                 status["message"] = "Command returned an unknown status during reconciliation."
                 status["command"] = pending.get("command")
                 print(f"[WARNING] command status unknown after {elapsed:.1f}s: {command_id}")
-                updates.append(reconciliation_message(status))
+                model_result = self._model_tool_result(
+                    str(pending.get("name") or "command_status"), status, pending.get("arguments", {})
+                )
+                updates.append(reconciliation_message(model_result))
 
         return updates
 
@@ -729,6 +813,16 @@ def reconciliation_message(result: dict[str, Any]) -> dict[str, Any]:
             }
         ],
     }
+
+
+def model_result_chars(outputs: list[dict[str, Any]]) -> int:
+    total = 0
+    for output in outputs:
+        if output.get("type") == "function_call_output":
+            total += len(str(output.get("output") or ""))
+        else:
+            total += serialized_chars(output)
+    return total
 
 
 def get_function_calls(response: Any) -> list[Any]:
