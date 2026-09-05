@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 
-RIMGPT_PROMPT_VERSION = "context-memory-v1-m9"
+RIMGPT_PROMPT_VERSION = "context-memory-v1-m10a"
 DEFAULT_PROMPT_CACHE_MODE = "implicit"
 PROMPT_CACHE_TTL = "30m"
 DEFAULT_COMPACT_THRESHOLD_TOKENS = 20_000
@@ -75,19 +75,21 @@ def prompt_cache_request_fields(
     return fields
 
 
-def compacted_output_as_input(compacted: Any) -> list[dict[str, Any]]:
+def compacted_output_as_input(compacted: Any) -> list[Any]:
     output = getattr(compacted, "output", None)
     if not isinstance(output, list) or not output:
         raise ValueError("Compaction response did not contain output items")
-    items: list[dict[str, Any]] = []
+    items: list[Any] = []
     for item in output:
         if isinstance(item, dict):
             value = dict(item)
-        elif hasattr(item, "model_dump"):
-            value = item.model_dump(exclude_none=True)
         else:
-            raise TypeError("Compaction output item is not serializable as Responses input")
-        if not value.get("type"):
+            # The Responses SDK accepts its own typed output items as input.
+            # Keeping them typed avoids Pydantic union-serialization warnings
+            # caused by model_dump() on compacted message content.
+            value = item
+        item_type = value.get("type") if isinstance(value, dict) else getattr(value, "type", None)
+        if not item_type:
             raise ValueError("Compaction output item has no type")
         items.append(value)
     return items

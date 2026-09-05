@@ -84,7 +84,19 @@ class ModelToolResultFormatter:
         if not isinstance(raw, dict):
             raise TypeError("Raw tool result must be an object")
         if raw.get("dryRun") is True:
-            return {"success": True, "dryRun": True, "executed": False, **command_semantics(tool_name, arguments, raw.get("data"))}
+            result = {
+                "dryRun": True,
+                "proposed": True,
+                "executed": False,
+                "alreadyProposed": bool(raw.get("alreadyProposed")),
+                "proposal": raw.get("proposal"),
+            }
+            if tool_name == "place_blueprints":
+                placements = arguments.get("placements")
+                result["wouldPlace"] = len(placements) if isinstance(placements, list) else 0
+            else:
+                result["wouldSubmit"] = copy.deepcopy(raw.get("wouldSubmit"))
+            return drop_nulls(result)
         if tool_name in READ_TOOLS:
             return self._format_read(tool_name, raw, arguments)
         return self._format_command(tool_name, raw, arguments)
@@ -475,6 +487,9 @@ def failure_result(raw: dict[str, Any], arguments: dict[str, Any]) -> dict[str, 
         result["requiredCapability"] = raw.get("requiredCapability")
     if raw.get("availableCapabilities"):
         result["availableCapabilities"] = copy.deepcopy(raw.get("availableCapabilities"))
+    for field in ("maxWidth", "maxHeight", "requestedWidth", "requestedHeight"):
+        if raw.get(field) is not None:
+            result[field] = raw.get(field)
     return drop_nulls(result)
 
 

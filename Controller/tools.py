@@ -59,7 +59,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "name": "inspect_map",
-        "description": "Read-only inspection of a bounded current-map RimWorld x/z rectangle, max about 40x40 cells. Use this before important construction, zones, mining, or growing decisions. Hidden/fogged contents are not exposed.",
+        "description": "Read-only inspection of a bounded current-map RimWorld x/z rectangle. Bounds are inclusive, so max_x-min_x+1 and max_z-min_z+1 must each be at most 40. Prefer focused 15x15 to 20x20 planning regions; larger regions remain valid when needed. Hidden/fogged contents are not exposed.",
         "strict": True,
         "parameters": {
             "type": "object",

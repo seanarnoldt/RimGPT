@@ -260,7 +260,7 @@ class ActiveToolSet:
                 "availableCapabilities": list(self.registry.non_core_group_names),
             }
         if group in self._dynamic_groups:
-            return self._enabled_result(group, 0)
+            return self._enabled_result(group, 0, already_enabled=True)
         if len(self._dynamic_groups) >= self.max_dynamic_groups:
             return {
                 "success": False,
@@ -270,7 +270,7 @@ class ActiveToolSet:
             }
         before = len(self.schemas())
         self._dynamic_groups.append(group)
-        return self._enabled_result(group, len(self.schemas()) - before)
+        return self._enabled_result(group, len(self.schemas()) - before, already_enabled=False)
 
     def is_active(self, tool_name: str) -> bool:
         registration = self.registry.registration(tool_name)
@@ -279,10 +279,11 @@ class ActiveToolSet:
     def schemas(self) -> list[dict[str, Any]]:
         return self.registry.schemas_for_groups(self.groups)
 
-    def _enabled_result(self, group: str, tools_added: int) -> dict[str, Any]:
+    def _enabled_result(self, group: str, tools_added: int, *, already_enabled: bool) -> dict[str, Any]:
         return {
             "success": True,
             "enabled": group,
+            "alreadyEnabled": already_enabled,
             "toolsAdded": tools_added,
             "activeGroups": list(self.groups),
             "toolCount": len(self.schemas()),
