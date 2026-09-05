@@ -322,7 +322,7 @@ schemas are supplied explicitly on every Responses continuation.
 ## Prompt Cache and Continuation
 
 The static model policy is a byte-stable prompt prefix versioned as
-`context-memory-v1-m8`. Dynamic colony memory, summaries, deltas, triggers,
+`context-memory-v1-m9`. Dynamic colony memory, summaries, deltas, triggers,
 tool results, and active capability schemas are supplied separately. The
 prompt-cache identity is `rimgpt:<prompt-version>:<model>` and never includes a
 colony ID, snapshot version, state hash, or secret.
@@ -367,3 +367,18 @@ Compare `[COST]` and `[CACHE]` lines for `inputTokens`, `cachedInputTokens`,
 `cacheWriteTokens`, `uncachedInputTokens`, output tokens, request/cycle cost,
 and hit ratio. A cache hit is not guaranteed. Remove `--dry-run` only when
 gameplay mutations are explicitly intended.
+
+## V3 Operational Capabilities
+
+Operational tools remain dynamically loaded. `equipment` manages player
+weapons, apparel, and bed assignments; `production` exposes per-worktable
+recipe lookup and supported bill controls; `power` controls existing flickable
+switches and configurable fuel targets; `zones` manages allowed areas; and
+`work` exposes narrow, player-equivalent prioritized haul, rescue, tend, clean,
+refuel, and construction orders. Exact current IDs and details are retrieved
+through bounded `get_colony_state` sections or `list_recipes`; the full
+`operations` object is not sent in normal model context.
+
+Every write remains a queued bridge command followed by an authoritative state
+refresh. A command result is only a compact acknowledgement, never the source
+of truth for current colony state.

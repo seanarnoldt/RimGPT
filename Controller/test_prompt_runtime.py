@@ -85,8 +85,8 @@ class PromptRuntimeTests(unittest.TestCase):
 
     def test_stable_prefix_and_cache_key_are_independent_of_dynamic_state(self):
         before = SYSTEM_INSTRUCTIONS.encode("utf-8")
-        dynamic_a = {"snapshot": 1, "colony": "Alpha", "memory": "first"}
-        dynamic_b = {"snapshot": 999, "colony": "Beta", "memory": "second"}
+        dynamic_a = {"snapshot": "SNAPSHOT_SENTINEL_A", "colony": "COLONY_SENTINEL_A", "memory": "MEMORY_SENTINEL_A"}
+        dynamic_b = {"snapshot": "SNAPSHOT_SENTINEL_B", "colony": "COLONY_SENTINEL_B", "memory": "MEMORY_SENTINEL_B"}
         self.assertEqual(before, SYSTEM_INSTRUCTIONS.encode("utf-8"))
         for value in (*dynamic_a.values(), *dynamic_b.values()):
             self.assertNotIn(str(value), SYSTEM_INSTRUCTIONS)
@@ -95,7 +95,7 @@ class PromptRuntimeTests(unittest.TestCase):
     def test_cache_key_changes_only_with_prompt_version_or_model(self):
         baseline = build_prompt_cache_key("gpt-5.6")
         self.assertEqual(baseline, build_prompt_cache_key("gpt-5.6", RIMGPT_PROMPT_VERSION))
-        self.assertNotEqual(baseline, build_prompt_cache_key("gpt-5.6", "context-memory-v1-m9"))
+        self.assertNotEqual(baseline, build_prompt_cache_key("gpt-5.6", "context-memory-v1-m10"))
         self.assertNotEqual(baseline, build_prompt_cache_key("gpt-5.6-sol"))
         self.assertNotIn("snapshot", baseline)
 
@@ -133,7 +133,7 @@ class PromptRuntimeTests(unittest.TestCase):
         self.assertEqual(responses.create_calls[0]["previous_response_id"], "previous-1")
         self.assertEqual(
             responses.create_calls[0]["prompt_cache_key"],
-            "rimgpt:context-memory-v1-m8:gpt-5.6",
+            "rimgpt:context-memory-v1-m9:gpt-5.6",
         )
         self.assertEqual(
             responses.create_calls[0]["prompt_cache_options"],
