@@ -11,6 +11,15 @@ from pathlib import Path
 from typing import Any, Callable
 from uuid import uuid4
 
+from strategic_memory import (
+    StrategicMemoryError,
+    apply_update as apply_memory_update,
+    empty_memory,
+    memory_telemetry,
+    reconcile_memory as reconcile_strategic_memory,
+    validate_memory,
+)
+
 
 PERSISTENCE_FORMAT_VERSION = 1
 
@@ -37,6 +46,7 @@ class StateStore:
         self._identity: StateIdentity | None = None
         self._current_state: dict[str, Any] | None = None
         self._decision_baseline: dict[str, Any] | None = None
+        self._memory: dict[str, Any] | None = None
         self._loaded_current_from_disk = False
 
     @property
@@ -52,6 +62,46 @@ class StateStore:
 
     def get_decision_baseline(self) -> dict[str, Any] | None:
         return copy.deepcopy(self._decision_baseline)
+
+    def get_memory(self) -> dict[str, Any] | None:
+        return copy.deepcopy(self._memory)
+
+    def apply_memory_update(self, update: dict[str, Any]) -> dict[str, Any]:
+        """Merge and persist a bounded strategic-memory patch for this colony."""
+        if self._identity is None or self._memory is None:
+            raise StateStoreError("Cannot update strategic memory without a loaded colony identity")
+        try:
+            updated, changes = apply_memory_update(self._memory, update, self._identity.as_dict())
+        except StrategicMemoryError as exc:
+            raise StateStoreError(f"Invalid strategic memory update: {exc}") from exc
+        self._memory = updated
+        if changes:
+            self._persist_memory()
+            self._log("[MEMORY] applied " + ",".join(changes))
+            self._log_memory_telemetry()
+        memory = self.get_memory()
+        assert memory is not None
+        return memory
+
+    def reconcile_memory(self) -> dict[str, Any] | None:
+        """Conservatively remove memory proven obsolete by authoritative state."""
+        if self._identity is None or self._memory is None:
+            return None
+        try:
+            reconciled, changes = reconcile_strategic_memory(
+                self._memory,
+                self._current_state,
+                self._identity.as_dict(),
+            )
+        except StrategicMemoryError as exc:
+            self._warn(f"could not reconcile strategic memory: {exc}")
+            return self.get_memory()
+        self._memory = reconciled
+        if changes:
+            self._persist_memory()
+            self._log("[MEMORY] reconciled " + ",".join(changes))
+            self._log_memory_telemetry()
+        return self.get_memory()
 
     def get_changes_since_last_decision(self) -> dict[str, Any]:
         """Calculate a side-effect-free semantic delta for future prompt use."""
@@ -79,6 +129,7 @@ class StateStore:
             self._identity = None
             self._current_state = copy.deepcopy(snapshot)
             self._decision_baseline = None
+            self._memory = None
             self._loaded_current_from_disk = False
             self._warn("live state has no loaded colony identity; not persisting it")
             return False
@@ -117,6 +168,7 @@ class StateStore:
         self._current_state = copy.deepcopy(snapshot)
         self._loaded_current_from_disk = False
         self._persist_current()
+        self.reconcile_memory()
         short_key = self._identity.key[:8] if self._identity is not None else "unknown"
         self._log(f"[STATESTORE] colony={short_key} snapshot={incoming_version if incoming_version is not None else 'unknown'} persisted")
         return True
@@ -146,10 +198,12 @@ class StateStore:
         self._identity = identity
         self._current_state = None
         self._decision_baseline = None
+        self._memory = None
         self._loaded_current_from_disk = False
         directory = self.colony_directory
         assert directory is not None
         directory.mkdir(parents=True, exist_ok=True)
+        self._load_memory(identity)
 
         metadata = self._read_json(self._metadata_path(), "metadata")
         if metadata is None:
@@ -183,6 +237,28 @@ class StateStore:
             return
         self._atomic_write_json(self._current_state_path(), self._current_state)
         self._atomic_write_json(self._metadata_path(), self._metadata_for(self._current_state))
+
+    def _persist_memory(self) -> None:
+        if self._identity is None or self._memory is None:
+            return
+        self._atomic_write_json(self._memory_path(), self._memory)
+
+    def _load_memory(self, identity: StateIdentity) -> None:
+        path = self._memory_path()
+        existed = path.exists()
+        document = self._read_json(path, "strategic memory", warn_missing=False)
+        if document is None:
+            self._memory = empty_memory(identity.as_dict())
+            if existed:
+                self._log("[MEMORY] Invalid persisted strategic memory; initialized clean memory")
+            return
+        try:
+            self._memory = validate_memory(document, identity.as_dict())
+        except StrategicMemoryError as exc:
+            self._warn(f"invalid strategic memory: {exc}")
+            self._quarantine(path)
+            self._memory = empty_memory(identity.as_dict())
+            self._log("[MEMORY] Invalid persisted strategic memory; initialized clean memory")
 
     def _metadata_for(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         assert self._identity is not None
@@ -235,6 +311,23 @@ class StateStore:
     def _baseline_path(self) -> Path:
         assert self.colony_directory is not None
         return self.colony_directory / "decision_baseline.json"
+
+    def _memory_path(self) -> Path:
+        assert self.colony_directory is not None
+        return self.colony_directory / "memory.json"
+
+    def _log_memory_telemetry(self) -> None:
+        if self._memory is None:
+            return
+        telemetry = memory_telemetry(self._memory)
+        self._log(
+            "[MEMORY] "
+            f"chars={telemetry['chars']} approxTokens={telemetry['approxTokens']} "
+            f"currentGoals={telemetry['currentGoals']} nextPriorities={telemetry['nextPriorities']} "
+            f"longTermGoals={telemetry['longTermGoals']} decisions={telemetry['decisions']} "
+            f"unresolvedProblems={telemetry['unresolvedProblems']} locations={telemetry['locations']} "
+            f"pawnRoles={telemetry['pawnRoles']}"
+        )
 
     def _read_json(self, path: Path, description: str, warn_missing: bool = True) -> Any | None:
         if not path.exists():

@@ -176,3 +176,52 @@ of individual crop plants. `StateDiff` handles cell geometry and plant events
 when those optional fields are present, but otherwise conservatively diffs the
 available zone properties, counts, and bounds. It does not infer missing cell or
 plant events.
+
+## Strategic Memory
+
+Each colony directory can additionally contain `memory.json`: a small,
+human-readable strategic record that is independent of authoritative state and
+`decision_baseline.json`. It is loaded only for the same persisted
+`game.colonyLineageId`, written atomically, and quarantined if malformed,
+unsupported, or copied from another colony. A `/state` schema change still
+invalidates the decision baseline, but does not erase compatible strategic
+memory.
+
+The current versioned memory schema is:
+
+```json
+{
+  "version": 1,
+  "colonyIdentity": {"kind": "rimGPTGameComponentGuid", "colonyLineageId": "..."},
+  "currentGoals": [],
+  "nextPriorities": [],
+  "longTermGoals": [],
+  "decisions": [],
+  "unresolvedProblems": [],
+  "importantLocations": [],
+  "pawnRoles": {},
+  "lastAssessment": ""
+}
+```
+
+`StateStore.apply_memory_update(...)` accepts an additive patch containing text
+lists, `decisionsToRemember`, explicit `resolvedDecisions` and
+`resolvedProblems`, structured locations, stable-ID pawn roles, and an
+`assessment` replacement. Text is normalized for deterministic exact/near-exact
+deduplication; no embeddings or model calls are used.
+
+Default bounds are 8 current goals, 10 next priorities, 8 long-term goals, 24
+decisions, 15 unresolved problems, 12 locations, 24 pawn-role entries with 4
+roles each, 240 characters per item, 600 characters for the assessment, and
+9,000 serialized characters overall. Newer items win when a list is full.
+`[MEMORY]` telemetry logs serialized characters, estimated tokens, field counts,
+and any bounding event.
+
+On every newer authoritative snapshot, StateStore conservatively reconciles
+only facts that state proves obsolete: strategic roles for missing colonists,
+no/need/build research-bench entries when a completed research bench exists,
+colonist-weapon entries when every current colonist has a primary weapon, and a
+small explicit set of rice/potato/corn/cotton/healroot growing-zone goals when
+the matching nonempty zone exists. Vague plans such as refrigeration or power
+are never inferred complete. Memory is not yet sent to the model; model-driven
+memory updates are intentionally deferred to a later milestone.
