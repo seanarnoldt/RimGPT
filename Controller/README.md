@@ -48,7 +48,10 @@ results. Its input-token estimate is a conservative preflight approximation;
 actual usage/cost telemetry is taken from API response usage fields when they
 are available. An estimated request above `RIMGPT_MAX_INPUT_TOKENS_PER_REQUEST`
 is blocked before it reaches OpenAI. Pricing is optional and does not affect
-controller behavior.
+controller behavior. If the input and output rates are absent, startup logs
+that dollar-cost calculation is disabled. Cached input requires its own rate
+when cached tokens are reported; cache writes use the uncached input rate
+unless `RIMGPT_CACHE_WRITE_COST_PER_MILLION` is explicitly configured.
 
 First test without executing commands:
 
@@ -347,6 +350,18 @@ chain for the next request. The compacted request is re-estimated, and the
 30,000-token hard guard still blocks it if necessary. A failed or unsupported
 compaction never fabricates context; normal continuation may proceed only when
 it remains under the hard limit.
+
+SDK-native items returned by `responses.compact()` are passed directly into
+the next Responses input. RimGPT does not call `model_dump()` on those typed
+items, avoiding Pydantic union-serialization warnings seen with OpenAI Python
+SDK 3.8.0 while preserving the opaque compaction payload.
+
+In `--dry-run`, mutation tool results are proposals, not successful game
+mutations: they report `dryRun=true`, `proposed=true`, and `executed=false`.
+The controller adds a bounded cycle-local `dryRunProposals` summary to later
+rounds so unchanged authoritative state does not invite duplicate proposals.
+This ledger resets every top-level cycle and is never stored as game state,
+strategic memory, or the decision baseline.
 
 `[PROMPT]`, `[CACHE]`, `[COMPACTION]`, and `[COST]` telemetry distinguishes
 stable-prefix size, cache eligibility, actual cached/cache-write tokens, and

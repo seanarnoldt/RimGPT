@@ -19,6 +19,7 @@ from context_telemetry import (
     serialized_chars,
 )
 from decision_context import DecisionContextBuilder, DecisionContextError, build_current_summary, serialize_context
+from dry_run_proposals import DryRunProposalLedger
 from model_tool_result import ModelToolResultFormatter
 from prompt_runtime import (
     DEFAULT_COMPACT_THRESHOLD_TOKENS,
@@ -57,6 +58,8 @@ You currently have only a limited toolset. Do not assume you can perform actions
 
 Only currently enabled tools appear directly. If a needed gameplay action is absent, use list_capabilities and enable_capability instead of assuming RimGPT cannot perform it. Enable only the groups needed for the current plan; enabled groups persist for this decision cycle and reset on the next cycle.
 
+If a capability is already listed in activeCapabilities, do not call enable_capability for it again.
+
 You may now allow starting supplies, choose research, designate visible mining/cutting/harvesting/hunting targets, and request unambiguous prioritized hauling.
 
 You may inspect bounded visible map regions, create stockpile and growing zones, place construction blueprints, cancel player orders, and designate visible player structures for deconstruction.
@@ -76,6 +79,8 @@ Use colonists[].work as the authoritative work capability and priority view. Nev
 Do not invent buildDef, stuffDef, plantDef, or zone IDs. Use list_build_options, get_build_info, list_growable_plants, and the supplied state when exact defs or IDs are uncertain.
 
 Inspect relevant map regions before committing major construction, growing zones, or storage zones.
+
+Inspect the smallest useful map area. Prefer roughly 15x15 to 20x20 planning regions when practical, using the map overview and important locations to choose focused coordinates. Expand only when the first region is insufficient; do not reflexively request about 40x40 for ordinary starter planning. Do not re-inspect overlapping territory in the same cycle unless new exact information is needed.
 
 Growing zones require normal RimWorld zone validity, not only fertile terrain. Prefer contiguous cells where inspect_map reports canCreateGrowingZone=true, use check_zone_placement before creating farms, and pass minimum_valid_cells to create_growing_zone to avoid accidental one- or two-cell farms.
 
@@ -108,6 +113,8 @@ Do not assume every visually open cell can support every structure.
 Avoid building steel walls at game start unless there is a specific strategic reason. Wood is generally less valuable as a long-term material, but steel is strategically important for machinery and early infrastructure.
 
 Prefer compact, practical early colony layouts. At game start prioritize immediate survival: supplies, shelter, food, beds, basic storage, research, and power as appropriate. Do not overbuild when resources are scarce.
+
+In dry-run mode, mutation results marked proposed=true and executed=false were not applied to RimWorld, so authoritative state is expected to remain unchanged. Treat dryRunProposals as the cycle-local plan and do not repeat an already-proposed mutation solely because live state did not change.
 
 Before equipment, apparel, bed, bill, power, fuel, or allowed-area actions, read the relevant current state section and use only returned stable IDs. Query recipes before adding unfamiliar bills. Use direct work orders for targeted immediate tasks, not as a substitute for sensible work priorities. For multi-step plans that require a stable state, you may pause first and restore an appropriate speed afterward; the controller never forces a pause automatically.
 
@@ -178,6 +185,18 @@ class AgentController:
         self.session_cost = 0.0
         self.compaction_count = 0
         self.previous_response_id: str | None = None
+        self.dry_run_proposals: DryRunProposalLedger | None = None
+        if not self.pricing.base_configured:
+            print(
+                "[COST] calculation disabled: configure "
+                "RIMGPT_INPUT_COST_PER_MILLION and RIMGPT_OUTPUT_COST_PER_MILLION; "
+                "cached/cache-write rates are separately configurable."
+            )
+        elif self.pricing.cached_input_per_million is None:
+            print(
+                "[COST] cached-input cost unavailable when cache hits occur: configure "
+                "RIMGPT_CACHED_INPUT_COST_PER_MILLION."
+            )
 
     def run_once(self, trigger: dict[str, Any] | None = None) -> None:
         self._begin_cycle()
@@ -197,6 +216,7 @@ class AgentController:
             return
 
         self._configure_initial_tools(decision_context)
+        decision_context = self._decorate_cycle_context(decision_context)
 
         print(f"[MODEL] Requesting one decision cycle from {self.model}")
         initial_input = [
@@ -355,13 +375,19 @@ class AgentController:
                 continue
 
             if self.dry_run:
+                ledger = self._get_dry_run_proposal_ledger()
+                proposal = ledger.add(name, arguments)
+                duplicate = bool(proposal["duplicate"])
                 result = {
-                    "success": True,
                     "dryRun": True,
-                    "message": "Command was proposed but not executed because --dry-run is active.",
-                    "command": bridge_command,
+                    "proposed": not duplicate,
+                    "executed": False,
+                    "duplicateProposal": duplicate,
+                    "proposal": proposal["summary"],
+                    "wouldSubmit": bridge_command,
                 }
-                print(f"[RESULT] dry-run proposed {bridge_command}")
+                disposition = "duplicate proposal" if duplicate else "proposed"
+                print(f"[RESULT] dry-run {disposition}: {proposal['summary']}")
                 outputs[index] = self._function_output(call_id, name, result, arguments)
                 continue
 
@@ -535,6 +561,22 @@ class AgentController:
         self.compaction_count = 0
         self.previous_response_id = None
         self._get_active_tools().reset()
+        self.dry_run_proposals = DryRunProposalLedger() if getattr(self, "dry_run", False) else None
+
+    def _get_dry_run_proposal_ledger(self) -> DryRunProposalLedger:
+        ledger = getattr(self, "dry_run_proposals", None)
+        if ledger is None:
+            ledger = DryRunProposalLedger()
+            self.dry_run_proposals = ledger
+        return ledger
+
+    def _decorate_cycle_context(self, context: dict[str, Any]) -> dict[str, Any]:
+        decorated = copy.deepcopy(context)
+        decorated["activeCapabilities"] = list(self._get_active_tools().dynamic_groups)
+        if getattr(self, "dry_run", False):
+            decorated["dryRun"] = True
+            decorated["dryRunProposals"] = self._get_dry_run_proposal_ledger().summaries()
+        return decorated
 
     def _get_active_tools(self) -> ActiveToolSet:
         registry = getattr(self, "tool_registry", None)
@@ -798,7 +840,7 @@ class AgentController:
         before_estimated_tokens: int,
         cache_fields: dict[str, Any],
         cache_key: str,
-    ) -> list[dict[str, Any]] | None:
+    ) -> list[Any] | None:
         self.compaction_count += 1
         self.model_request_count += 1
         request_number = self.model_request_count
@@ -836,6 +878,10 @@ class AgentController:
             f"cacheWriteTokens={format_metric(usage.cache_write_tokens)} "
             f"uncachedInputTokens={format_metric(usage.uncached_input_tokens)} "
             f"outputTokens={format_metric(usage.output_tokens)} "
+            f"uncachedInputCost={format_cost(usage.uncached_input_cost)} "
+            f"cachedInputCost={format_cost(usage.cached_input_cost)} "
+            f"cacheWriteCost={format_cost(usage.cache_write_cost)} "
+            f"outputCost={format_cost(usage.output_cost)} "
             f"estimatedRequestCost={format_cost(usage.estimated_cost)} "
             f"cycleCost={format_cost(self.cycle_cost if usage.estimated_cost is not None else None)} "
             f"sessionCost={format_cost(self.session_cost if usage.estimated_cost is not None else None)}"
@@ -859,6 +905,7 @@ class AgentController:
                 active = self._get_active_tools()
                 result = {
                     "capabilities": self.tool_registry.capability_list(active.groups),
+                    "activeCapabilities": list(active.dynamic_groups),
                     "maxDynamicGroups": active.max_dynamic_groups,
                     "activeDynamicGroups": len(active.dynamic_groups),
                 }
@@ -874,6 +921,15 @@ class AgentController:
                     arguments["max_x"],
                     arguments["max_z"],
                 )
+                if result.get("error") == "regionTooLarge":
+                    width = abs(arguments["max_x"] - arguments["min_x"]) + 1
+                    height = abs(arguments["max_z"] - arguments["min_z"]) + 1
+                    result = {
+                        **result,
+                        "reason": "regionTooLarge",
+                        "requestedWidth": width,
+                        "requestedHeight": height,
+                    }
             elif name == "list_build_options":
                 result = self.bridge.list_build_options(arguments.get("category"), arguments.get("search"))
             elif name == "get_build_info":
@@ -1024,6 +1080,7 @@ class AgentController:
                     "note": note,
                 }
 
+        context = self._decorate_cycle_context(context)
         prefix = "Fresh authoritative RimWorld state" if not stale and context.get("authoritative") else "RimWorld state may be stale"
         text = prefix + ". Compact post-tool context:\n" + serialize_context(context)
 

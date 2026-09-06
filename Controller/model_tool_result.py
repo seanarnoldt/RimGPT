@@ -86,14 +86,19 @@ class ModelToolResultFormatter:
         if raw.get("dryRun") is True:
             result = {
                 "dryRun": True,
-                "proposed": True,
+                "proposed": bool(raw.get("proposed")),
                 "executed": False,
-                "alreadyProposed": bool(raw.get("alreadyProposed")),
-                "proposal": raw.get("proposal"),
+                "duplicateProposal": bool(raw.get("duplicateProposal")),
+                "summary": raw.get("proposal"),
             }
             if tool_name == "place_blueprints":
                 placements = arguments.get("placements")
                 result["wouldPlace"] = len(placements) if isinstance(placements, list) else 0
+            elif tool_name == "set_allowed_area_cells":
+                cells = arguments.get("cells")
+                result["wouldTouchCells"] = len(cells) if isinstance(cells, list) else 0
+                result["areaId"] = arguments.get("area_id")
+                result["allowed"] = arguments.get("allowed")
             else:
                 result["wouldSubmit"] = copy.deepcopy(raw.get("wouldSubmit"))
             return drop_nulls(result)
@@ -564,6 +569,8 @@ def result_success(value: Any) -> bool:
     if value.get("success") is True:
         return True
     if value.get("valid") is True:
+        return True
+    if value.get("dryRun") is True and value.get("executed") is False:
         return True
     return False
 

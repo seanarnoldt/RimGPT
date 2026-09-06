@@ -26,6 +26,8 @@ class CommandStatusUnreachable(RuntimeError):
 
 
 class RimWorldBridge:
+    MAX_MAP_REGION_SIZE = 40
+
     def __init__(self, base_url: str = "http://127.0.0.1:47831", timeout: float = 5.0) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
@@ -45,6 +47,16 @@ class RimWorldBridge:
         )
 
     def inspect_map(self, min_x: int, min_z: int, max_x: int, max_z: int) -> dict[str, Any]:
+        width = abs(max_x - min_x) + 1
+        height = abs(max_z - min_z) + 1
+        if width > self.MAX_MAP_REGION_SIZE or height > self.MAX_MAP_REGION_SIZE:
+            return {
+                "error": "regionTooLarge",
+                "maxWidth": self.MAX_MAP_REGION_SIZE,
+                "maxHeight": self.MAX_MAP_REGION_SIZE,
+                "requestedWidth": width,
+                "requestedHeight": height,
+            }
         return self._request_json(
             "GET",
             "/map/region",

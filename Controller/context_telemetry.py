@@ -95,6 +95,37 @@ class Pricing:
     output_per_million: float | None = None
     cache_write_per_million: float | None = None
 
+    @property
+    def base_configured(self) -> bool:
+        return self.input_per_million is not None and self.output_per_million is not None
+
+    def cost_components(
+        self,
+        input_tokens: int | None,
+        cached_input_tokens: int | None,
+        output_tokens: int | None,
+        cache_write_tokens: int | None = None,
+    ) -> dict[str, float] | None:
+        if input_tokens is None or output_tokens is None or not self.base_configured:
+            return None
+        cached = min(max(cached_input_tokens or 0, 0), input_tokens)
+        uncached = input_tokens - cached
+        cache_write = min(max(cache_write_tokens or 0, 0), uncached)
+        regular_uncached = uncached - cache_write
+        if cached and self.cached_input_per_million is None:
+            return None
+        cache_write_rate = (
+            self.cache_write_per_million
+            if self.cache_write_per_million is not None
+            else self.input_per_million
+        )
+        return {
+            "uncachedInput": regular_uncached * self.input_per_million / 1_000_000,
+            "cachedInput": cached * (self.cached_input_per_million or 0.0) / 1_000_000,
+            "cacheWrite": cache_write * cache_write_rate / 1_000_000,
+            "output": output_tokens * self.output_per_million / 1_000_000,
+        }
+
     @classmethod
     def from_environment(cls) -> "Pricing":
         return cls(
@@ -111,27 +142,8 @@ class Pricing:
         output_tokens: int | None,
         cache_write_tokens: int | None = None,
     ) -> float | None:
-        if input_tokens is None or output_tokens is None:
-            return None
-        if self.input_per_million is None or self.output_per_million is None:
-            return None
-        cached = min(max(cached_input_tokens or 0, 0), input_tokens)
-        uncached = input_tokens - cached
-        cache_write = min(max(cache_write_tokens or 0, 0), uncached)
-        regular_uncached = uncached - cache_write
-        if cached and self.cached_input_per_million is None:
-            return None
-        cache_write_rate = (
-            self.cache_write_per_million
-            if self.cache_write_per_million is not None
-            else self.input_per_million
-        )
-        return (
-            (regular_uncached * self.input_per_million)
-            + (cache_write * cache_write_rate)
-            + (cached * (self.cached_input_per_million or 0.0))
-            + (output_tokens * self.output_per_million)
-        ) / 1_000_000
+        components = self.cost_components(input_tokens, cached_input_tokens, output_tokens, cache_write_tokens)
+        return sum(components.values()) if components is not None else None
 
 
 @dataclass(frozen=True)
@@ -141,6 +153,10 @@ class UsageTelemetry:
     cache_write_tokens: int | None
     uncached_input_tokens: int | None
     output_tokens: int | None
+    uncached_input_cost: float | None
+    cached_input_cost: float | None
+    cache_write_cost: float | None
+    output_cost: float | None
     estimated_cost: float | None
 
 
@@ -225,12 +241,17 @@ def extract_usage(response: Any, pricing: Pricing) -> UsageTelemetry:
     uncached_input_tokens = None
     if input_tokens is not None:
         uncached_input_tokens = input_tokens - min(max(cached_input_tokens or 0, 0), input_tokens)
+    components = pricing.cost_components(input_tokens, cached_input_tokens, output_tokens, cache_write_tokens)
     return UsageTelemetry(
         input_tokens=input_tokens,
         cached_input_tokens=cached_input_tokens,
         cache_write_tokens=cache_write_tokens,
         uncached_input_tokens=uncached_input_tokens,
         output_tokens=output_tokens,
+        uncached_input_cost=components.get("uncachedInput") if components is not None else None,
+        cached_input_cost=components.get("cachedInput") if components is not None else None,
+        cache_write_cost=components.get("cacheWrite") if components is not None else None,
+        output_cost=components.get("output") if components is not None else None,
         estimated_cost=pricing.estimate_cost(input_tokens, cached_input_tokens, output_tokens, cache_write_tokens),
     )
 

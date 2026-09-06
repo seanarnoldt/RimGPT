@@ -117,13 +117,9 @@ class PromptRuntimeTests(unittest.TestCase):
         self.assertNotIn("prompt_cache_options", fields)
 
     def test_compacted_output_is_passed_through_as_opaque_input(self):
-        source = SimpleNamespace(
-            output=[SimpleNamespace(type="compaction", encrypted_content="opaque", id="compact-1", model_dump=lambda **_: {"type": "compaction", "encrypted_content": "opaque", "id": "compact-1"})]
-        )
-        self.assertEqual(
-            compacted_output_as_input(source),
-            [{"type": "compaction", "encrypted_content": "opaque", "id": "compact-1"}],
-        )
+        item = SimpleNamespace(type="compaction", encrypted_content="opaque", id="compact-1")
+        source = SimpleNamespace(output=[item])
+        self.assertIs(compacted_output_as_input(source)[0], item)
 
     def test_below_threshold_uses_normal_continuation_without_compaction(self):
         responses = SupportedResponses()
@@ -133,7 +129,7 @@ class PromptRuntimeTests(unittest.TestCase):
         self.assertEqual(responses.create_calls[0]["previous_response_id"], "previous-1")
         self.assertEqual(
             responses.create_calls[0]["prompt_cache_key"],
-            "rimgpt:context-memory-v1-m9:gpt-5.6",
+            "rimgpt:context-memory-v1-m10a:gpt-5.6",
         )
         self.assertEqual(
             responses.create_calls[0]["prompt_cache_options"],
