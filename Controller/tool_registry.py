@@ -38,6 +38,7 @@ CAPABILITY_SPECS = (
         CORE_GROUP,
         "Read selective state and map context, manage game speed, and discover additional capabilities.",
         (
+            ("finish_decision", "controller:finish_decision"),
             ("get_colony_state", "read:get_colony_state"),
             ("inspect_map", "read:inspect_map"),
             ("set_speed", "command:set_speed"),

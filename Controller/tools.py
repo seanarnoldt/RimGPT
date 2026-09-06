@@ -4,6 +4,48 @@ from typing import Any
 TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
+        "name": "finish_decision",
+        "description": "Finish this top-level decision with a compact assessment and continuity handoff. Call this alone when done. Retain or explicitly resolve every prior open loop. This local terminal tool does not change RimWorld and requires no later prose response.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "assessment": {"type": "string", "maxLength": 600},
+                "open_loops": {
+                    "type": "array", "maxItems": 6,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": ["string", "null"], "description": "Prior loop ID when retaining/updating it; null for a new loop."},
+                            "objective": {"type": "string", "maxLength": 180},
+                            "next_action": {"type": "string", "maxLength": 220},
+                            "status": {"type": "string", "enum": ["pending", "blocked", "deferred"]},
+                            "reason": {"type": "string", "maxLength": 220},
+                        },
+                        "required": ["id", "objective", "next_action", "status", "reason"],
+                        "additionalProperties": False,
+                    },
+                },
+                "resolved_loops": {
+                    "type": "array", "maxItems": 6,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "resolution": {"type": "string", "enum": ["completed", "cancelled", "invalidated"]},
+                            "reason": {"type": "string", "maxLength": 220},
+                        },
+                        "required": ["id", "resolution", "reason"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": ["assessment", "open_loops", "resolved_loops"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
         "name": "list_capabilities",
         "description": "List compact descriptions of additional RimGPT capability groups and whether each is enabled.",
         "strict": True,

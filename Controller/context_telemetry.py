@@ -58,6 +58,7 @@ class ContextBreakdown:
     summary_chars: int
     delta_chars: int
     trigger_chars: int
+    decision_handoff_chars: int
     bootstrap: bool
     bootstrap_chars: int
     full_state_sent: bool
@@ -78,6 +79,7 @@ class ContextBreakdown:
             f"toolResultCharsAccumulated={self.accumulated_tool_result_chars} "
             f"memoryChars={self.memory_chars} summaryChars={self.summary_chars} "
             f"deltaChars={self.delta_chars} triggerChars={self.trigger_chars} "
+            f"decisionHandoffChars={self.decision_handoff_chars} "
             f"bootstrap={str(self.bootstrap).lower()} bootstrapChars={self.bootstrap_chars} "
             f"fullStateChars={self.full_state_chars} operationsChars={self.operations_chars} "
             f"fullStateSent={str(self.full_state_sent).lower()} "
@@ -196,6 +198,7 @@ def measure_context(
     delta_value = context_payload.get("changesSinceLastDecision", context_payload.get("changesSinceToolRound"))
     delta_chars = serialized_chars(delta_value) if delta_value is not None else 0
     trigger_chars = serialized_chars(context_payload.get("trigger")) if "trigger" in context_payload else 0
+    decision_handoff_chars = serialized_chars(context_payload.get("previousDecision")) if "previousDecision" in context_payload else 0
     bootstrap = bool(context_payload.get("bootstrap"))
     bootstrap_chars = serialized_chars(context_payload.get("bootstrapState")) if "bootstrapState" in context_payload else 0
     # Tool-result bytes are already present in either this request's dynamic
@@ -216,6 +219,7 @@ def measure_context(
         summary_chars=summary_chars,
         delta_chars=delta_chars,
         trigger_chars=trigger_chars,
+        decision_handoff_chars=decision_handoff_chars,
         bootstrap=bootstrap,
         bootstrap_chars=bootstrap_chars,
         full_state_sent=full_state_sent,

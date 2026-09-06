@@ -19,6 +19,7 @@ from context_telemetry import (
     serialized_chars,
 )
 from decision_context import DecisionContextBuilder, DecisionContextError, build_current_summary, serialize_context
+from decision_handoff import DecisionHandoffError, fallback_handoff, handoff_chars, prepare_handoff
 from dry_run_proposals import DryRunProposalLedger
 from model_tool_result import ModelToolResultFormatter
 from prompt_runtime import (
@@ -67,6 +68,10 @@ You may inspect bounded visible map regions, create stockpile and growing zones,
 The initial decision context is compact. currentSummary is current strategic state, and changesSinceLastDecision contains meaningful changes since the last successfully completed strategic decision.
 
 strategicMemory records prior plans and decisions; it is not current authoritative state. Live state always overrides memory.
+
+previousDecision is a short-lived execution handoff, not authoritative state or conversation history. Use current authoritative state to evaluate its open loops. Never assume an unresolved item still needs execution if current state shows it is complete or obsolete; resolve it explicitly instead.
+
+Unresolved committed actions from the previous decision are priorities. Before merely restating the same need, either execute it, make concrete progress, explicitly defer or block it, or resolve it from current state. Every prior loop must be retained in finish_decision or explicitly resolved as completed, cancelled, or invalidated.
 
 If exact current information is needed, call get_colony_state for only the relevant section or use an existing targeted read tool. Do not query every state section reflexively. Start with the summary and delta, then retrieve only details whose uncertainty matters to this decision.
 
@@ -186,6 +191,8 @@ class AgentController:
         self.compaction_count = 0
         self.previous_response_id: str | None = None
         self.dry_run_proposals: DryRunProposalLedger | None = None
+        self.pending_decision_handoff: dict[str, Any] | None = None
+        self.terminal_decision_finished = False
         if not self.pricing.base_configured:
             print(
                 "[COST] calculation disabled: configure "
@@ -228,7 +235,7 @@ class AgentController:
                         "text": (
                             "Review this compact RimGPT decision context and decide whether to use the "
                             "available tools. Retrieve bounded current detail only when needed. After any "
-                            "tool results, provide a concise final assessment.\n\n"
+                            "tool results, finish with finish_decision; ordinary final text remains a fallback.\n\n"
                             + serialize_context(decision_context)
                         ),
                     }
@@ -243,7 +250,11 @@ class AgentController:
             return
 
         final_response = self._handle_tool_rounds(response)
-        assessment = getattr(final_response, "output_text", "") or collect_output_text(final_response)
+        assessment = (
+            str(self.pending_decision_handoff.get("assessment") or "")
+            if self.pending_decision_handoff is not None
+            else (getattr(final_response, "output_text", "") or collect_output_text(final_response))
+        )
         if assessment:
             print(f"[MODEL] Final assessment: {assessment.strip()}")
         else:
@@ -258,12 +269,27 @@ class AgentController:
             self.termination_reason = f"{len(self.uncertain_commands)} command(s) remained uncertain at cycle end"
             print(f"[ERROR] Decision cycle terminated: {self.termination_reason}")
 
+        if self.termination_reason is None and self.pending_decision_handoff is None:
+            try:
+                self.pending_decision_handoff = fallback_handoff(
+                    self.state_store.get_decision_handoff(), assessment
+                )
+                print("[HANDOFF] No structured finish_decision supplied; retained prior open loops")
+            except DecisionHandoffError as exc:
+                self.termination_reason = f"could not prepare fallback decision handoff: {exc}"
+                print(f"[ERROR] Decision cycle terminated: {self.termination_reason}")
+
         if self.termination_reason is None:
             try:
                 final_state = self.bridge.get_state()
                 self.current_state = self._accept_authoritative_state(final_state)
                 print(f"[STATE] Final authoritative {summarize_state(final_state)}")
-                self.state_store.set_decision_baseline(final_state)
+                if self.dry_run:
+                    self.state_store.set_decision_baseline(final_state)
+                    print("[HANDOFF] Dry-run decision handoff was not persisted")
+                else:
+                    assert self.pending_decision_handoff is not None
+                    self.state_store.commit_successful_decision(final_state, self.pending_decision_handoff)
             except (RimWorldBridgeError, StateStoreError) as exc:
                 self.termination_reason = f"could not confirm final authoritative state: {exc}"
                 print(f"[ERROR] Decision baseline not advanced: {exc}")
@@ -289,12 +315,20 @@ class AgentController:
 
             self.total_tool_calls += len(tool_calls)
             print(f"[MODEL] Tool-call round {round_index + 1}: {len(tool_calls)} call(s)")
+            finish_calls = [call for call in tool_calls if getattr(call, "name", "") == "finish_decision"]
+            if finish_calls and len(tool_calls) != 1:
+                self.termination_reason = "finish_decision must be the only tool call in its terminal round"
+                print(f"[ERROR] Tool-call loop terminated: {self.termination_reason}")
+                return current
             round_start_version = snapshot_version(self.current_state)
             round_start_state = copy.deepcopy(self.current_state)
             outputs = self._execute_tool_call_batch(tool_calls)
             outputs.extend(self._reconcile_uncertain_commands())
             if self.termination_reason is not None:
                 print(f"[ERROR] Tool-call loop terminated: {self.termination_reason}")
+                return current
+            if self.terminal_decision_finished:
+                print("[MODEL] Tool-call loop terminated: finish_decision completed locally")
                 return current
 
             post_action_state, post_action_context = self._fresh_state_message(
@@ -560,6 +594,8 @@ class AgentController:
         self.cycle_cost = 0.0
         self.compaction_count = 0
         self.previous_response_id = None
+        self.pending_decision_handoff = None
+        self.terminal_decision_finished = False
         self._get_active_tools().reset()
         self.dry_run_proposals = DryRunProposalLedger() if getattr(self, "dry_run", False) else None
 
@@ -901,6 +937,21 @@ class AgentController:
         try:
             if name == "get_colony_state":
                 result = self._get_colony_state_query().get(arguments["section"])
+            elif name == "finish_decision":
+                previous_handoff = self.state_store.get_decision_handoff()
+                result = prepare_handoff(arguments, previous_handoff)
+                self.pending_decision_handoff = result
+                self.terminal_decision_finished = True
+                previous_ids = {
+                    item.get("id") for item in (previous_handoff or {}).get("openLoops", [])
+                    if isinstance(item, dict)
+                }
+                current_ids = {item["id"] for item in result["openLoops"]}
+                resolved_ids = sorted(item for item in previous_ids - current_ids if item)
+                print(
+                    f"[HANDOFF] finish_decision accepted chars={handoff_chars(result)} "
+                    f"openLoops={len(result['openLoops'])} resolved={','.join(resolved_ids) or 'none'}"
+                )
             elif name == "list_capabilities":
                 active = self._get_active_tools()
                 result = {

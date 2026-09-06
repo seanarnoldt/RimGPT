@@ -96,7 +96,7 @@ class ToolRegistryTests(unittest.TestCase):
         registrations = DEFAULT_TOOL_REGISTRY.all_registrations()
         names = [item.name for item in registrations]
         self.assertEqual(len(names), len(set(names)))
-        self.assertEqual(len(names), 54)
+        self.assertEqual(len(names), 55)
         self.assertTrue(all(item.group in DEFAULT_TOOL_REGISTRY.group_names for item in registrations))
         self.assertTrue(all(item.executor for item in registrations))
 

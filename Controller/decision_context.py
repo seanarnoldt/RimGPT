@@ -41,6 +41,7 @@ class DecisionContextBuilder:
             raise DecisionContextError("Cannot build decision context without authoritative current state")
         delta = self.state_store.get_changes_since_last_decision()
         memory = self.state_store.get_memory()
+        previous_decision = self.state_store.get_decision_handoff()
         context: dict[str, Any] = {
             "contextVersion": CONTEXT_VERSION,
             "bootstrap": bool(delta.get("bootstrapRequired")),
@@ -49,6 +50,8 @@ class DecisionContextBuilder:
             "changesSinceLastDecision": delta,
             "trigger": normalize_trigger(trigger),
         }
+        if previous_decision is not None:
+            context["previousDecision"] = previous_decision
         if context["bootstrap"]:
             context["bootstrapState"] = build_bootstrap_state(state)
             context = bound_bootstrap_context(context, self.max_bootstrap_chars)
@@ -70,6 +73,7 @@ class DecisionContextBuilder:
             f"summaryChars={serialized_chars(context.get('currentSummary', {}))} "
             f"deltaChars={serialized_chars(context.get('changesSinceLastDecision', {}))} "
             f"triggerChars={serialized_chars(context.get('trigger', {}))} "
+            f"decisionHandoffChars={serialized_chars(context.get('previousDecision')) if 'previousDecision' in context else 0} "
             f"compactDynamicChars={compact_chars} dynamicCompression={compression:.1f}x fullStateSent=false"
         )
         return context

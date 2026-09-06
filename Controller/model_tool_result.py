@@ -13,8 +13,9 @@ MAX_INSPECT_MAP_CHARS = 24_000
 MAX_ERROR_CHARS = 800
 CATALOG_TOOLS = {"list_build_options", "get_build_info", "list_growable_plants", "list_recipes"}
 CAPABILITY_TOOLS = {"list_capabilities", "enable_capability"}
+TERMINAL_TOOLS = {"finish_decision"}
 READ_TOOLS = CATALOG_TOOLS | CAPABILITY_TOOLS | {
-    "get_colony_state", "inspect_map", "check_build_placements", "check_zone_placement"
+    "get_colony_state", "inspect_map", "check_build_placements", "check_zone_placement", "finish_decision"
 }
 
 
@@ -123,6 +124,8 @@ class ModelToolResultFormatter:
         if result.get("error") or result.get("gameLoaded") is False:
             return failure_result(result, arguments)
         if tool_name in CAPABILITY_TOOLS:
+            return {"success": True, **drop_nulls(copy.deepcopy(result))}
+        if tool_name in TERMINAL_TOOLS:
             return {"success": True, **drop_nulls(copy.deepcopy(result))}
         if tool_name == "get_colony_state":
             return {"success": True, **drop_nulls(copy.deepcopy(result))}

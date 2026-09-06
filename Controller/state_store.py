@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Callable
 from uuid import uuid4
 
+from decision_handoff import DecisionHandoffError, validate_handoff
 from strategic_memory import (
     StrategicMemoryError,
     apply_update as apply_memory_update,
@@ -38,7 +39,7 @@ class StateIdentity:
 
 
 class StateStore:
-    """Persists only authoritative snapshots; prompting and diffing stay elsewhere."""
+    """Own colony-scoped authoritative state, memory, baseline, and decision handoff."""
 
     def __init__(self, root: str | Path | None = None, logger: Callable[[str], None] | None = None) -> None:
         self.root = Path(root) if root is not None else Path(__file__).resolve().parent / "state"
@@ -47,6 +48,7 @@ class StateStore:
         self._current_state: dict[str, Any] | None = None
         self._decision_baseline: dict[str, Any] | None = None
         self._memory: dict[str, Any] | None = None
+        self._decision_handoff: dict[str, Any] | None = None
         self._loaded_current_from_disk = False
 
     @property
@@ -65,6 +67,9 @@ class StateStore:
 
     def get_memory(self) -> dict[str, Any] | None:
         return copy.deepcopy(self._memory)
+
+    def get_decision_handoff(self) -> dict[str, Any] | None:
+        return copy.deepcopy(self._decision_handoff)
 
     def apply_memory_update(self, update: dict[str, Any]) -> dict[str, Any]:
         """Merge and persist a bounded strategic-memory patch for this colony."""
@@ -130,6 +135,7 @@ class StateStore:
             self._current_state = copy.deepcopy(snapshot)
             self._decision_baseline = None
             self._memory = None
+            self._decision_handoff = None
             self._loaded_current_from_disk = False
             self._warn("live state has no loaded colony identity; not persisting it")
             return False
@@ -185,6 +191,33 @@ class StateStore:
         self._atomic_write_json(self._baseline_path(), self._baseline_envelope(snapshot))
         self._log("[STATESTORE] decision baseline persisted")
 
+    def commit_successful_decision(self, snapshot: dict[str, Any], handoff: dict[str, Any]) -> None:
+        """Persist baseline and handoff only after all completion checks pass."""
+        if self._identity is None:
+            raise StateStoreError("Cannot commit a decision without a loaded colony identity")
+        snapshot_identity = identity_from_state(snapshot)
+        if snapshot_identity is None or snapshot_identity.key != self._identity.key:
+            raise StateStoreError("Successful decision belongs to a different colony identity")
+        if state_schema_version(snapshot) != state_schema_version(self._current_state):
+            raise StateStoreError("Decision baseline schema does not match current authoritative state")
+        try:
+            validated_handoff = validate_handoff(handoff)
+        except DecisionHandoffError as exc:
+            raise StateStoreError(f"Invalid decision handoff: {exc}") from exc
+
+        previous_baseline = copy.deepcopy(self._decision_baseline)
+        previous_handoff = copy.deepcopy(self._decision_handoff)
+        try:
+            self._atomic_write_json(self._handoff_path(), self._handoff_envelope(validated_handoff))
+            self._atomic_write_json(self._baseline_path(), self._baseline_envelope(snapshot))
+        except OSError as exc:
+            self._restore_decision_artifact(self._handoff_path(), previous_handoff, handoff=True)
+            self._restore_decision_artifact(self._baseline_path(), previous_baseline, handoff=False)
+            raise StateStoreError(f"Could not atomically commit successful decision: {exc}") from exc
+        self._decision_handoff = copy.deepcopy(validated_handoff)
+        self._decision_baseline = copy.deepcopy(snapshot)
+        self._log("[HANDOFF] successful decision handoff and baseline persisted")
+
     def clear_decision_baseline(self) -> None:
         self._decision_baseline = None
         path = self._baseline_path() if self._identity is not None else None
@@ -199,11 +232,13 @@ class StateStore:
         self._current_state = None
         self._decision_baseline = None
         self._memory = None
+        self._decision_handoff = None
         self._loaded_current_from_disk = False
         directory = self.colony_directory
         assert directory is not None
         directory.mkdir(parents=True, exist_ok=True)
         self._load_memory(identity)
+        self._load_decision_handoff(identity)
 
         metadata = self._read_json(self._metadata_path(), "metadata")
         if metadata is None:
@@ -243,6 +278,23 @@ class StateStore:
             return
         self._atomic_write_json(self._memory_path(), self._memory)
 
+    def _load_decision_handoff(self, identity: StateIdentity) -> None:
+        path = self._handoff_path()
+        envelope = self._read_json(path, "decision handoff", warn_missing=False)
+        if envelope is None:
+            self._decision_handoff = None
+            return
+        try:
+            if not isinstance(envelope, dict) or envelope.get("persistenceFormatVersion") != PERSISTENCE_FORMAT_VERSION:
+                raise DecisionHandoffError("invalid persistence format")
+            if envelope.get("identity") != identity.as_dict():
+                raise DecisionHandoffError("colony identity mismatch")
+            self._decision_handoff = validate_handoff(envelope.get("handoff"))
+        except DecisionHandoffError as exc:
+            self._warn(f"invalid decision handoff: {exc}")
+            self._quarantine(path)
+            self._decision_handoff = None
+
     def _load_memory(self, identity: StateIdentity) -> None:
         path = self._memory_path()
         existed = path.exists()
@@ -275,6 +327,14 @@ class StateStore:
 
     def _baseline_envelope(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         return {"metadata": self._metadata_for(snapshot), "state": copy.deepcopy(snapshot)}
+
+    def _handoff_envelope(self, handoff: dict[str, Any]) -> dict[str, Any]:
+        assert self._identity is not None
+        return {
+            "persistenceFormatVersion": PERSISTENCE_FORMAT_VERSION,
+            "identity": self._identity.as_dict(),
+            "handoff": copy.deepcopy(handoff),
+        }
 
     def _valid_metadata(self, metadata: Any, identity: StateIdentity, expected_schema: int) -> bool:
         return (
@@ -315,6 +375,20 @@ class StateStore:
     def _memory_path(self) -> Path:
         assert self.colony_directory is not None
         return self.colony_directory / "memory.json"
+
+    def _handoff_path(self) -> Path:
+        assert self.colony_directory is not None
+        return self.colony_directory / "decision_handoff.json"
+
+    def _restore_decision_artifact(self, path: Path, value: dict[str, Any] | None, *, handoff: bool) -> None:
+        try:
+            if value is None:
+                path.unlink(missing_ok=True)
+            else:
+                envelope = self._handoff_envelope(value) if handoff else self._baseline_envelope(value)
+                self._atomic_write_json(path, envelope)
+        except OSError as exc:
+            self._warn(f"could not restore {path.name} after failed decision commit: {exc}")
 
     def _log_memory_telemetry(self) -> None:
         if self._memory is None:
