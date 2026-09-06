@@ -124,8 +124,8 @@ class StateStore:
         )
         return delta
 
-    def update_current_state(self, snapshot: dict[str, Any]) -> bool:
-        """Accept a live authoritative state and persist it when it advances."""
+    def update_current_state(self, snapshot: dict[str, Any], *, persist: bool = True) -> bool:
+        """Accept authoritative state, optionally as an in-memory-only observation."""
         if not isinstance(snapshot, dict):
             raise StateStoreError("Authoritative state must be a JSON object")
 
@@ -148,12 +148,15 @@ class StateStore:
         if self._identity is None or self._identity.key != identity.key:
             if self._identity is not None:
                 self._log("[STATESTORE] Colony identity changed; persisted baseline will not be reused")
-            self._activate(identity, schema)
+            self._activate(identity, schema, persist=persist)
 
         current_schema = state_schema_version(self._current_state) if self._current_state is not None else None
         if current_schema is not None and current_schema != schema:
             self._log("[STATESTORE] schema mismatch; invalidated decision baseline")
-            self.clear_decision_baseline()
+            if persist:
+                self.clear_decision_baseline()
+            else:
+                self._decision_baseline = None
             self._current_state = None
 
         incoming_version = snapshot_version(snapshot)
@@ -169,14 +172,26 @@ class StateStore:
                     )
                     return False
                 self._log("[STATESTORE] snapshot lineage reset or ambiguous; using fresh live state")
-                self.clear_decision_baseline()
+                if persist:
+                    self.clear_decision_baseline()
+                else:
+                    self._decision_baseline = None
 
         self._current_state = copy.deepcopy(snapshot)
         self._loaded_current_from_disk = False
-        self._persist_current()
-        self.reconcile_memory()
         short_key = self._identity.key[:8] if self._identity is not None else "unknown"
-        self._log(f"[STATESTORE] colony={short_key} snapshot={incoming_version if incoming_version is not None else 'unknown'} persisted")
+        if persist:
+            self._persist_current()
+            self.reconcile_memory()
+            self._log(
+                f"[STATESTORE] colony={short_key} "
+                f"snapshot={incoming_version if incoming_version is not None else 'unknown'} persisted"
+            )
+        else:
+            self._log(
+                f"[STATESTORE] colony={short_key} "
+                f"snapshot={incoming_version if incoming_version is not None else 'unknown'} observed in memory"
+            )
         return True
 
     def set_decision_baseline(self, snapshot: dict[str, Any]) -> None:
@@ -227,7 +242,7 @@ class StateStore:
             except OSError as exc:
                 self._warn(f"could not clear decision baseline: {exc}")
 
-    def _activate(self, identity: StateIdentity, expected_schema: int) -> None:
+    def _activate(self, identity: StateIdentity, expected_schema: int, *, persist: bool = True) -> None:
         self._identity = identity
         self._current_state = None
         self._decision_baseline = None
@@ -236,36 +251,45 @@ class StateStore:
         self._loaded_current_from_disk = False
         directory = self.colony_directory
         assert directory is not None
-        directory.mkdir(parents=True, exist_ok=True)
-        self._load_memory(identity)
-        self._load_decision_handoff(identity)
+        if persist:
+            directory.mkdir(parents=True, exist_ok=True)
+        self._load_memory(identity, quarantine_corrupt=persist)
+        self._load_decision_handoff(identity, quarantine_corrupt=persist)
 
-        metadata = self._read_json(self._metadata_path(), "metadata")
+        metadata = self._read_json(self._metadata_path(), "metadata", quarantine_corrupt=persist)
         if metadata is None:
             return
         if not self._valid_metadata(metadata, identity, expected_schema):
             self._warn("persisted metadata invalid or incompatible; starting with fresh authoritative baseline")
-            self._quarantine(self._metadata_path())
+            if persist:
+                self._quarantine(self._metadata_path())
             return
 
-        state = self._read_json(self._current_state_path(), "current state")
+        state = self._read_json(self._current_state_path(), "current state", quarantine_corrupt=persist)
         if state is None or not self._valid_state(state, identity, expected_schema, metadata):
             self._warn("persisted state invalid; starting with fresh authoritative baseline")
-            self._quarantine(self._current_state_path())
+            if persist:
+                self._quarantine(self._current_state_path())
             return
 
         self._current_state = state
         self._loaded_current_from_disk = True
         self._log(f"[STATESTORE] loaded persisted state snapshot={snapshot_version(state)}")
 
-        baseline = self._read_json(self._baseline_path(), "decision baseline", warn_missing=False)
+        baseline = self._read_json(
+            self._baseline_path(),
+            "decision baseline",
+            warn_missing=False,
+            quarantine_corrupt=persist,
+        )
         if baseline is not None:
             baseline_state = baseline.get("state") if isinstance(baseline, dict) else None
             if self._valid_baseline(baseline, baseline_state, identity, expected_schema):
                 self._decision_baseline = baseline_state
             else:
                 self._log("[STATESTORE] schema/identity mismatch; invalidated decision baseline")
-                self._quarantine(self._baseline_path())
+                if persist:
+                    self._quarantine(self._baseline_path())
 
     def _persist_current(self) -> None:
         if self._identity is None or self._current_state is None:
@@ -278,9 +302,14 @@ class StateStore:
             return
         self._atomic_write_json(self._memory_path(), self._memory)
 
-    def _load_decision_handoff(self, identity: StateIdentity) -> None:
+    def _load_decision_handoff(self, identity: StateIdentity, *, quarantine_corrupt: bool = True) -> None:
         path = self._handoff_path()
-        envelope = self._read_json(path, "decision handoff", warn_missing=False)
+        envelope = self._read_json(
+            path,
+            "decision handoff",
+            warn_missing=False,
+            quarantine_corrupt=quarantine_corrupt,
+        )
         if envelope is None:
             self._decision_handoff = None
             return
@@ -292,13 +321,19 @@ class StateStore:
             self._decision_handoff = validate_handoff(envelope.get("handoff"))
         except DecisionHandoffError as exc:
             self._warn(f"invalid decision handoff: {exc}")
-            self._quarantine(path)
+            if quarantine_corrupt:
+                self._quarantine(path)
             self._decision_handoff = None
 
-    def _load_memory(self, identity: StateIdentity) -> None:
+    def _load_memory(self, identity: StateIdentity, *, quarantine_corrupt: bool = True) -> None:
         path = self._memory_path()
         existed = path.exists()
-        document = self._read_json(path, "strategic memory", warn_missing=False)
+        document = self._read_json(
+            path,
+            "strategic memory",
+            warn_missing=False,
+            quarantine_corrupt=quarantine_corrupt,
+        )
         if document is None:
             self._memory = empty_memory(identity.as_dict())
             if existed:
@@ -308,7 +343,8 @@ class StateStore:
             self._memory = validate_memory(document, identity.as_dict())
         except StrategicMemoryError as exc:
             self._warn(f"invalid strategic memory: {exc}")
-            self._quarantine(path)
+            if quarantine_corrupt:
+                self._quarantine(path)
             self._memory = empty_memory(identity.as_dict())
             self._log("[MEMORY] Invalid persisted strategic memory; initialized clean memory")
 
@@ -403,7 +439,14 @@ class StateStore:
             f"pawnRoles={telemetry['pawnRoles']}"
         )
 
-    def _read_json(self, path: Path, description: str, warn_missing: bool = True) -> Any | None:
+    def _read_json(
+        self,
+        path: Path,
+        description: str,
+        warn_missing: bool = True,
+        *,
+        quarantine_corrupt: bool = True,
+    ) -> Any | None:
         if not path.exists():
             if warn_missing and description == "metadata":
                 self._log("[STATESTORE] new colony identity; initialized fresh store")
@@ -413,7 +456,8 @@ class StateStore:
                 return json.load(handle)
         except (OSError, json.JSONDecodeError) as exc:
             self._warn(f"corrupt {description}; starting fresh ({exc})")
-            self._quarantine(path)
+            if quarantine_corrupt:
+                self._quarantine(path)
             return None
 
     def _atomic_write_json(self, path: Path, value: Any) -> None:

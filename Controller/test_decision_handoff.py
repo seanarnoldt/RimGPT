@@ -210,6 +210,7 @@ class DecisionHandoffTests(unittest.TestCase):
         failed = AgentController(bridge=bridge, model="test-model", client=SimpleNamespace(responses=FakeResponses([RuntimeError("API failed")])), state_store=store, pricing=Pricing())
         failed.run_once()
         self.assertEqual(store.get_decision_handoff(), prior)
+        self.assertEqual(snapshot_version(store.get_decision_baseline()), 30)
 
         direct = AgentController(bridge=bridge, model="test-model", client=SimpleNamespace(responses=FakeResponses([])), state_store=store, pricing=Pricing())
         direct._begin_cycle()
@@ -238,12 +239,56 @@ class DecisionHandoffTests(unittest.TestCase):
         prior = prepare_handoff({"assessment": "Real intent", "open_loops": [new_loop()], "resolved_loops": []}, None)
         store = self.make_store(state)
         store.commit_successful_decision(state, prior)
+        store.apply_memory_update({"unresolvedProblems": ["No research bench"]})
+        paths = {
+            "current": store._current_state_path(),
+            "baseline": store._baseline_path(),
+            "handoff": store._handoff_path(),
+            "memory": store._memory_path(),
+        }
+        before = {name: path.read_bytes() for name, path in paths.items()}
+
+        live = base_state(version=41)
+        live["buildings"].append({
+            "id": "Building_ResearchBench",
+            "defName": "ResearchBenchSimple",
+            "label": "simple research bench",
+        })
         updated = [{**new_loop("deferred", "Dry-run planning only"), "id": prior["openLoops"][0]["id"]}]
         fake = FakeResponses([response("r1", [finish(updated, assessment="Dry proposal")])])
-        controller = AgentController(bridge=CycleBridge(state), model="test-model", dry_run=True, client=SimpleNamespace(responses=fake), state_store=store, pricing=Pricing())
+        bridge = CycleBridge(live)
+        controller = AgentController(bridge=bridge, model="test-model", dry_run=True, client=SimpleNamespace(responses=fake), state_store=store, pricing=Pricing())
         controller.run_once()
         self.assertEqual(store.get_decision_handoff(), prior)
+        self.assertEqual(snapshot_version(store.get_decision_baseline()), 40)
+        self.assertEqual(store.get_memory()["unresolvedProblems"], ["No research bench"])
+        self.assertEqual({name: path.read_bytes() for name, path in paths.items()}, before)
+        self.assertEqual(controller.pending_decision_handoff["assessment"], "Dry proposal")
+        self.assertEqual(bridge.submitted, [])
         self.assertIsNotNone(controller.dry_run_proposals)
+
+    def test_dry_run_without_prior_baseline_leaves_it_unset(self):
+        store = self.make_store()
+        self.assertIsNone(store.get_decision_baseline())
+        before = list(self.root.iterdir())
+
+        live = base_state(version=46)
+        fake = FakeResponses([response("r1", [finish([new_loop()], assessment="Dry proposal")])])
+        controller = AgentController(
+            bridge=CycleBridge(live),
+            model="test-model",
+            dry_run=True,
+            client=SimpleNamespace(responses=fake),
+            state_store=store,
+            pricing=Pricing(),
+        )
+        controller.run_once()
+
+        self.assertIsNone(store.get_decision_baseline())
+        self.assertIsNone(store.get_decision_handoff())
+        self.assertFalse(store._baseline_path().exists())
+        self.assertFalse(store._handoff_path().exists())
+        self.assertEqual(list(self.root.iterdir()), before)
 
     def test_research_bench_three_cycle_continuity(self):
         state1 = base_state(version=50)

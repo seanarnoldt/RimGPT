@@ -288,8 +288,7 @@ class AgentController:
                 self.current_state = self._accept_authoritative_state(final_state)
                 print(f"[STATE] Final authoritative {summarize_state(final_state)}")
                 if self.dry_run:
-                    self.state_store.set_decision_baseline(final_state)
-                    print("[HANDOFF] Dry-run decision handoff was not persisted")
+                    print("[STATESTORE] Dry-run completed without persistent baseline, handoff, or memory changes")
                 else:
                     assert self.pending_decision_handoff is not None
                     self.state_store.commit_successful_decision(final_state, self.pending_decision_handoff)
@@ -693,7 +692,7 @@ class AgentController:
         store = getattr(self, "state_store", None)
         if store is not None:
             try:
-                store.update_current_state(state)
+                store.update_current_state(state, persist=not getattr(self, "dry_run", False))
             except StateStoreError as exc:
                 print(f"[WARNING] Could not persist authoritative state: {exc}")
         return state
