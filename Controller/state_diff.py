@@ -46,6 +46,7 @@ class StateDiff:
         self._put(changes, "colonists", self._diff_colonists(baseline.get("colonists"), current.get("colonists")))
         self._put(changes, "research", self._diff_research(baseline.get("research"), current.get("research")))
         self._put(changes, "threats", self._diff_threats(baseline.get("threats"), current.get("threats")))
+        self._put(changes, "awareness", self._diff_awareness(baseline.get("awareness"), current.get("awareness")))
         self._put(changes, "mapThings", self._diff_generic_collection(baseline.get("mapThings"), current.get("mapThings"), nested=True))
         self._put(changes, "map", self._diff_map(baseline.get("map"), current.get("map")))
         self._put(changes, "construction", self._diff_construction(baseline.get("buildings"), current.get("buildings")))
@@ -187,6 +188,20 @@ class StateDiff:
         self._bounded_put(result, "changed", changed)
         return result
 
+    def _diff_awareness(self, before: Any, after: Any) -> dict[str, Any]:
+        if not isinstance(before, dict) or not isinstance(after, dict):
+            return change_value(before, after)
+        result: dict[str, Any] = {}
+        for field in ("activeAlerts", "activeLetters"):
+            old, new = index_by_id(before.get(field)), index_by_id(after.get(field))
+            field_delta: dict[str, Any] = {}
+            self._bounded_put(field_delta, "added", [awareness_entry_summary(new[key]) for key in sorted(new.keys() - old.keys())])
+            self._bounded_put(field_delta, "resolved", [awareness_entry_summary(old[key]) for key in sorted(old.keys() - new.keys())])
+            self._put(result, field, field_delta)
+        old_recent, new_recent = index_by_id(before.get("recentEvents")), index_by_id(after.get("recentEvents"))
+        self._bounded_put(result, "newEvents", [awareness_entry_summary(new_recent[key]) for key in sorted(new_recent.keys() - old_recent.keys())])
+        return result
+
     def _diff_map(self, before: Any, after: Any) -> dict[str, Any]:
         if not isinstance(before, dict) or not isinstance(after, dict):
             return change_value(before, after)
@@ -277,6 +292,7 @@ class StateDiff:
         self._put(result, "power", self._diff_power(before.get("power"), after.get("power")))
         self._put(result, "fuel", self._diff_fuel(before.get("fuel"), after.get("fuel")))
         self._put(result, "allowedAreas", self._diff_zones(before.get("allowedAreas"), after.get("allowedAreas")))
+        self._put(result, "labor", labor_diff(before.get("labor"), after.get("labor")))
         return result
 
     def _diff_worktables(self, before: Any, after: Any) -> dict[str, Any]:
@@ -781,6 +797,16 @@ def research_summary(item: Any) -> Any:
 
 def generic_entity_summary(item: Any) -> Any:
     return compact_summary(item, ("id", "type", "defName", "label", "stackCount", "position", "forbidden"))
+
+
+def awareness_entry_summary(item: Any) -> Any:
+    return compact_summary(item, ("id", "type", "severity", "title", "text", "ticksGame"))
+
+
+def labor_diff(before: Any, after: Any) -> dict[str, Any]:
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return change_value(before, after)
+    return fields_diff(before, after, ("idleColonistCount", "capableIdleColonistCount", "pendingWork", "obviousBlockers"))
 
 
 def identity_summary(item: Any) -> Any:

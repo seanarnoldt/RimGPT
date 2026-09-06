@@ -48,7 +48,7 @@ class DecisionContextBuilder:
             "strategicMemory": memory or {},
             "currentSummary": build_current_summary(state),
             "changesSinceLastDecision": delta,
-            "trigger": normalize_trigger(trigger),
+            "trigger": build_context_trigger(trigger, state, delta),
         }
         if previous_decision is not None:
             context["previousDecision"] = previous_decision
@@ -127,6 +127,13 @@ def build_current_summary(state: dict[str, Any]) -> dict[str, Any]:
         },
     }
 
+    awareness = awareness_summary(state)
+    if awareness is not None:
+        result["awareness"] = awareness
+    labor = labor_summary(state)
+    if labor is not None:
+        result["labor"] = labor
+
     power = power_summary(state)
     if power is not None:
         result["power"] = power
@@ -140,6 +147,39 @@ def build_current_summary(state: dict[str, Any]) -> dict[str, Any]:
     if environment:
         result["environment"] = select_fields(environment, ("outdoorTemperature", "season", "growingSeason", "weather"))
     return result
+
+
+def awareness_summary(state: dict[str, Any]) -> dict[str, Any] | None:
+    awareness = state.get("awareness") if isinstance(state.get("awareness"), dict) else None
+    if awareness is None:
+        return None
+    alerts = dict_list(awareness.get("activeAlerts"))
+    letters = dict_list(awareness.get("activeLetters"))
+    recent = dict_list(awareness.get("recentEvents"))
+    important = [
+        select_fields(item, ("id", "type", "severity", "title", "text", "ticksGame"))
+        for item in (alerts + letters + recent)
+        if str(item.get("severity") or "").lower() in ("high", "critical", "medium")
+    ]
+    return {
+        "status": "attentionRequired" if alerts or letters or important else "clear",
+        "activeAlerts": len(alerts),
+        "activeLetters": len(letters),
+        "important": important[:8],
+    }
+
+
+def labor_summary(state: dict[str, Any]) -> dict[str, Any] | None:
+    operations = state.get("operations") if isinstance(state.get("operations"), dict) else {}
+    labor = operations.get("labor") if isinstance(operations.get("labor"), dict) else None
+    if labor is None:
+        return None
+    return {
+        "idleColonists": labor.get("idleColonistCount"),
+        "capableIdleColonists": labor.get("capableIdleColonistCount"),
+        "pendingWork": copy.deepcopy(labor.get("pendingWork")),
+        "obviousBlockers": copy.deepcopy(dict_list(labor.get("obviousBlockers"))[:12]),
+    }
 
 
 def build_bootstrap_state(state: dict[str, Any]) -> dict[str, Any]:
@@ -292,6 +332,7 @@ def health_summary(colonists: list[dict[str, Any]]) -> dict[str, Any]:
     downed = 0
     injured = 0
     emergency = False
+    urgent_conditions: list[dict[str, Any]] = []
     for pawn in colonists:
         health = pawn.get("health") if isinstance(pawn.get("health"), dict) else {}
         if health.get("downed"):
@@ -300,11 +341,21 @@ def health_summary(colonists: list[dict[str, Any]]) -> dict[str, Any]:
             injured += 1
         if health.get("downed") or health.get("dead") or safe_float(health.get("bleedingRate")) > 0:
             emergency = True
+        for hediff in dict_list(health.get("hediffs")):
+            def_name = str(hediff.get("defName") or "")
+            if any(marker in def_name.lower() for marker in ("heatstroke", "hypothermia", "bloodloss", "infection")):
+                urgent_conditions.append({
+                    "pawnId": pawn.get("id"),
+                    "defName": hediff.get("defName"),
+                    "label": hediff.get("label"),
+                    "severity": hediff.get("severity"),
+                })
     return {
         "status": "emergency" if emergency else ("injured" if injured else "stable"),
         "emergency": emergency,
         "downedColonists": downed,
         "injuredColonists": injured,
+        "urgentConditions": urgent_conditions[:12],
     }
 
 
@@ -371,6 +422,20 @@ def normalize_trigger(trigger: dict[str, Any] | None) -> dict[str, Any]:
         value = trigger[key]
         if isinstance(value, (str, int, float, bool)) or value is None:
             result[str(key)[:80]] = value[:500] if isinstance(value, str) else value
+    return result
+
+
+def build_context_trigger(trigger: dict[str, Any] | None, state: dict[str, Any], delta: dict[str, Any]) -> dict[str, Any]:
+    result = normalize_trigger(trigger)
+    summary = awareness_summary(state)
+    changes = delta.get("changes") if isinstance(delta.get("changes"), dict) else {}
+    awareness_changes = changes.get("awareness") if isinstance(changes.get("awareness"), dict) else None
+    if summary is not None and (summary.get("status") == "attentionRequired" or awareness_changes):
+        result["playerAwareness"] = {
+            "status": summary.get("status"),
+            "important": copy.deepcopy(summary.get("important", []))[:4],
+            "changed": bool(awareness_changes),
+        }
     return result
 
 

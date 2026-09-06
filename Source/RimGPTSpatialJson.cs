@@ -189,6 +189,11 @@ namespace RimGPT
             WriteBool(json, "buildable", walkable && edifice == null && mineable == null, true);
             WriteBool(json, "roofed", roofed, true);
             WriteBool(json, "water", water, true);
+            WriteRoom(json, "room", RegionAndRoomQuery.RoomAt(cell, map), map, true);
+            if (edifice != null)
+            {
+                WriteAdjacentRoomIds(json, map, cell, true);
+            }
             string growingZoneReason;
             string stockpileZoneReason;
             WriteBool(json, "canCreateGrowingZone", RimGPTZoneUtility.CanCreateZoneCell(map, cell, RimGPTZonePlacementType.Growing, out growingZoneReason), true);
@@ -595,8 +600,80 @@ namespace RimGPT
             WriteInt(json, "maxHitPoints", thing.MaxHitPoints, true);
             WriteNullableBool(json, "powered", PoweredState(thing), true);
             WriteBool(json, "forbidden", thing.IsForbidden(Faction.OfPlayer), true);
+            WriteRoom(json, "room", SafeRoom(delegate { return RegionAndRoomQuery.GetRoom(thing); }), map, true);
             WritePlantFields(json, thing);
             json.Append("}");
+        }
+
+        private static void WriteRoom(StringBuilder json, string name, Room room, Map map, bool comma)
+        {
+            WriteName(json, name, comma);
+            if (room == null || room.Map != map || room.Fogged)
+            {
+                json.Append("null");
+                return;
+            }
+
+            int cellCount = Math.Max(0, room.CellCount);
+            int openRoofCount = Math.Max(0, room.OpenRoofCount);
+            float roofCoverage = cellCount > 0 ? (float)(cellCount - openRoofCount) / cellCount : 0f;
+            CellRect bounds = room.ExtentsClose;
+            json.Append("{");
+            WriteString(json, "id", "room-" + map.uniqueID + "-" + room.ID, false);
+            WriteBool(json, "indoors", !room.PsychologicallyOutdoors, true);
+            WriteBool(json, "enclosed", room.ProperRoom && !room.TouchesMapEdge, true);
+            WriteBool(json, "usesOutdoorTemperature", room.UsesOutdoorTemperature, true);
+            WriteBool(json, "suitableForTemperatureControl", room.ProperRoom && !room.TouchesMapEdge && !room.UsesOutdoorTemperature && roofCoverage >= 0.75f, true);
+            WriteInt(json, "cellCount", cellCount, true);
+            WriteInt(json, "roofedCellCount", Math.Max(0, cellCount - openRoofCount), true);
+            WriteFloat(json, "roofCoverage", roofCoverage, true);
+            WriteFloat(json, "temperature", room.Temperature, true);
+            json.Append(",\"bounds\":{");
+            WriteInt(json, "minX", bounds.minX, false);
+            WriteInt(json, "minZ", bounds.minZ, true);
+            WriteInt(json, "maxX", bounds.maxX, true);
+            WriteInt(json, "maxZ", bounds.maxZ, true);
+            json.Append("}}");
+        }
+
+        private static void WriteAdjacentRoomIds(StringBuilder json, Map map, IntVec3 cell, bool comma)
+        {
+            WriteName(json, "adjacentRoomIds", comma);
+            json.Append("[");
+            HashSet<int> seen = new HashSet<int>();
+            bool wrote = false;
+            for (int i = 0; i < GenAdj.CardinalDirections.Length; i++)
+            {
+                IntVec3 adjacent = cell + GenAdj.CardinalDirections[i];
+                if (!adjacent.InBounds(map) || adjacent.Fogged(map))
+                {
+                    continue;
+                }
+                Room room = RegionAndRoomQuery.RoomAt(adjacent, map);
+                if (room == null || room.Map != map || room.Fogged || !seen.Add(room.ID))
+                {
+                    continue;
+                }
+                if (wrote)
+                {
+                    json.Append(",");
+                }
+                WriteStringValue(json, "room-" + map.uniqueID + "-" + room.ID);
+                wrote = true;
+            }
+            json.Append("]");
+        }
+
+        private static Room SafeRoom(Func<Room> getter)
+        {
+            try
+            {
+                return getter();
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static void WritePlantFields(StringBuilder json, Thing thing)

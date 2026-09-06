@@ -25,6 +25,7 @@ namespace RimGPT
             WritePower(json, map, true);
             WriteFuel(json, map, true);
             WriteAllowedAreas(json, map, true);
+            json.Append(",\"labor\":").Append(RimGPTLaborJson.Build(map));
             json.Append("}");
             return json.ToString();
         }

@@ -12,6 +12,7 @@ namespace RimGPT
         public RimGPTMapThingsState MapThings;
         public RimGPTResearchState Research;
         public List<RimGPTThreatState> Threats;
+        public string AwarenessJson;
         public string MapJson;
         public string BuildingsJson;
         public string OperationsJson;

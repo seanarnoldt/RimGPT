@@ -31,6 +31,7 @@ namespace RimGPT
             state.MapThings = BuildMapThings(map);
             state.Research = BuildResearch();
             state.Threats = BuildThreats(map);
+            state.AwarenessJson = RimGPTPlayerAwarenessJson.Build();
             state.MapJson = RimGPTSpatialJson.BuildMapOverviewJson(map);
             state.BuildingsJson = RimGPTSpatialJson.BuildBuildingsJson(map);
             state.OperationsJson = RimGPTOperationalJson.Build(map);

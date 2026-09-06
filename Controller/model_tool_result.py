@@ -250,6 +250,8 @@ def compact_cell(value: Any) -> dict[str, Any]:
         "walkable": value.get("walkable"),
         "buildable": value.get("buildable"),
         "roofed": value.get("roofed"),
+        "room": copy.deepcopy(value.get("room")),
+        "adjacentRoomIds": copy.deepcopy(value.get("adjacentRoomIds")),
         "water": value.get("water"),
         "growingZone": value.get("canCreateGrowingZone"),
         "stockpileZone": value.get("canCreateStockpile"),
@@ -283,6 +285,7 @@ def compact_map_thing(thing: dict[str, Any]) -> dict[str, Any]:
         "x": position.get("x"),
         "z": position.get("z"),
         "rotation": thing.get("rotation"),
+        "room": copy.deepcopy(thing.get("room")),
     }
     size = thing.get("size")
     if isinstance(size, dict) and (safe_int(size.get("x")) != 1 or safe_int(size.get("z")) != 1):

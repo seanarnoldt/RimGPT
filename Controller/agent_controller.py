@@ -107,6 +107,14 @@ Blueprint placement only creates normal construction blueprints; colonists still
 
 Terrain support matters for buildings. Use inspect_map terrain affordances and build option requiredTerrainAffordance before placing blueprints.
 
+Player-visible alerts, letters, and recent events in currentSummary.awareness are authoritative gameplay warnings. Treat high-severity warnings such as an ancient danger as strategic constraints; never infer or expose contents that remain hidden.
+
+For temperature-sensitive shelter, physical blueprint validity is not enough. Use inspect_map room semantics to verify that the intended occupied space is enclosed, indoors, substantially roofed, and uses room temperature before relying on a cooler, heater, bed, or workstation there.
+
+When a strategic goal is blocked, convert the blocker into an executable prerequisite using available tools, then preserve the parent goal as an open loop. For example, obtain visible resources, enable capable labor, or place a required generic work facility before expecting the parent work to proceed. Do not merely restate a known blocker across cycles.
+
+Use currentSummary.labor to notice capable idle colonists, pending work, and obvious work blockers. If colonists are idle while a goal is blocked on obtainable visible resources or an available prerequisite, prefer a concrete enabling action over passive waiting.
+
 Before placing a large construction batch, preferably call check_build_placements with the planned placements. If several cells fail validation, adjust the plan instead of repeatedly attempting the same cells.
 
 inspect_map uses a terrain palette with row runs encoded as [xStart,length,terrainPaletteId], plus exact explicit things and grouped plant coordinate cells. Use inspect_map to identify a candidate plan, then use the exact build or zone validator before mutation.
