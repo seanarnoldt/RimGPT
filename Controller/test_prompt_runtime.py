@@ -116,10 +116,13 @@ class PromptRuntimeTests(unittest.TestCase):
         self.assertIn("prompt_cache_key", fields)
         self.assertNotIn("prompt_cache_options", fields)
 
-    def test_compacted_output_is_passed_through_as_opaque_input(self):
+    def test_compacted_output_is_copied_to_plain_api_input(self):
         item = SimpleNamespace(type="compaction", encrypted_content="opaque", id="compact-1")
         source = SimpleNamespace(output=[item])
-        self.assertIs(compacted_output_as_input(source)[0], item)
+        self.assertEqual(
+            compacted_output_as_input(source)[0],
+            {"type": "compaction", "encrypted_content": "opaque", "id": "compact-1"},
+        )
 
     def test_below_threshold_uses_normal_continuation_without_compaction(self):
         responses = SupportedResponses()
@@ -129,7 +132,7 @@ class PromptRuntimeTests(unittest.TestCase):
         self.assertEqual(responses.create_calls[0]["previous_response_id"], "previous-1")
         self.assertEqual(
             responses.create_calls[0]["prompt_cache_key"],
-            "rimgpt:context-memory-v1-m10b:gpt-5.6",
+            "rimgpt:context-memory-v1-m10c:gpt-5.6",
         )
         self.assertEqual(
             responses.create_calls[0]["prompt_cache_options"],
@@ -142,8 +145,10 @@ class PromptRuntimeTests(unittest.TestCase):
         controller._request_model(self.small_input(), state={}, previous_response_id="previous-1")
         self.assertEqual(len(responses.compact_calls), 1)
         self.assertEqual(responses.compact_calls[0]["previous_response_id"], "previous-1")
-        self.assertEqual(responses.compact_calls[0]["input"], self.small_input())
-        self.assertEqual(responses.create_calls[0]["input"], responses.compact_output)
+        self.assertEqual(responses.compact_calls[0]["input"][:-1], self.small_input())
+        self.assertIn("decisionBudget", responses.compact_calls[0]["input"][-1]["content"][0]["text"])
+        self.assertEqual(responses.create_calls[0]["input"][:-1], responses.compact_output)
+        self.assertIn('"requestsRemaining":7', responses.create_calls[0]["input"][-1]["content"][0]["text"])
         self.assertNotIn("previous_response_id", responses.create_calls[0])
         self.assertEqual(controller.compaction_count, 1)
         self.assertEqual(controller.model_request_count, 2)

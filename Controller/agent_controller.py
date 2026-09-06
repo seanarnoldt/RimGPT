@@ -73,6 +73,8 @@ previousDecision is a short-lived execution handoff, not authoritative state or 
 
 Unresolved committed actions from the previous decision are priorities. Before merely restating the same need, either execute it, make concrete progress, explicitly defer or block it, or resolve it from current state. Every prior loop must be retained in finish_decision or explicitly resolved as completed, cancelled, or invalidated.
 
+Make meaningful progress, but do not try to solve the entire colony in one decision cycle. Use open loops to carry unfinished work into later cycles. decisionBudget.requestsRemaining includes the response you are currently producing. When that budget is low, stop discovery and finalize. Prefer acting on validated information over repeatedly gathering more information. finish_decision is the required normal terminal action.
+
 If exact current information is needed, call get_colony_state for only the relevant section or use an existing targeted read tool. Do not query every state section reflexively. Start with the summary and delta, then retrieve only details whose uncertainty matters to this decision.
 
 Do not invent pawn IDs, resource counts, building existence, map coordinates, work types, threats, or other game state. Use targeted validators and catalog tools when planning construction or zones.
@@ -193,6 +195,7 @@ class AgentController:
         self.dry_run_proposals: DryRunProposalLedger | None = None
         self.pending_decision_handoff: dict[str, Any] | None = None
         self.terminal_decision_finished = False
+        self._last_presented_tool_names: set[str] | None = None
         if not self.pricing.base_configured:
             print(
                 "[COST] calculation disabled: configure "
@@ -364,7 +367,12 @@ class AgentController:
         prepared: list[dict[str, Any]] = []
         outputs: list[dict[str, Any] | None] = [None] * len(tool_calls)
         self._last_batch_had_write = False
-        active_at_round_start = {schema["name"] for schema in self._get_active_tools().schemas()}
+        presented = getattr(self, "_last_presented_tool_names", None)
+        active_at_round_start = (
+            set(presented)
+            if presented is not None
+            else {schema["name"] for schema in self._get_active_tools().schemas()}
+        )
 
         for index, call in enumerate(tool_calls):
             name = getattr(call, "name", "")
@@ -596,6 +604,7 @@ class AgentController:
         self.previous_response_id = None
         self.pending_decision_handoff = None
         self.terminal_decision_finished = False
+        self._last_presented_tool_names = None
         self._get_active_tools().reset()
         self.dry_run_proposals = DryRunProposalLedger() if getattr(self, "dry_run", False) else None
 
@@ -641,6 +650,44 @@ class AgentController:
             f"activeGroups={','.join(active.groups)} toolCount={len(schemas)} "
             f"schemaChars={serialized_chars(schemas)}"
         )
+
+    def _decision_budget(self) -> dict[str, Any]:
+        return {
+            "decisionBudget": {
+                "requestsRemaining": max(0, self.max_model_requests_per_cycle - self.model_request_count),
+                "finalizationReserved": True,
+            }
+        }
+
+    def _with_decision_budget(self, input_items: list[Any]) -> list[Any]:
+        return [
+            *input_items,
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": json.dumps(self._decision_budget(), separators=(",", ":")),
+                    }
+                ],
+            },
+        ]
+
+    def _request_tool_surface(self) -> tuple[list[dict[str, Any]], str]:
+        remaining = self.max_model_requests_per_cycle - self.model_request_count
+        schemas = self._get_active_tools().schemas()
+        if remaining <= 1:
+            return [schema for schema in schemas if schema.get("name") == "finish_decision"], "finalization-only"
+        if remaining == 2:
+            immediate = []
+            for schema in schemas:
+                registration = self.tool_registry.registration(str(schema.get("name") or ""))
+                if schema.get("name") == "finish_decision" or (
+                    registration is not None and not registration.read_only
+                ):
+                    immediate.append(schema)
+            return immediate, "immediate-work"
+        return schemas, "normal"
 
     def _accept_authoritative_state(self, state: dict[str, Any]) -> dict[str, Any]:
         store = getattr(self, "state_store", None)
@@ -737,8 +784,17 @@ class AgentController:
                 f"Maximum model requests per decision cycle reached: {self.max_model_requests_per_cycle}"
             )
 
-        active_tools = self._get_active_tools().schemas()
-        self._log_active_tools()
+        active_tools, tool_mode = self._request_tool_surface()
+        request_input = self._with_decision_budget(input_items)
+        print(
+            f"[BUDGET] requestsRemaining={self.max_model_requests_per_cycle - self.model_request_count} "
+            f"finalizationReserved=true toolMode={tool_mode}"
+        )
+        print(
+            "[TOOLS] "
+            f"requestMode={tool_mode} toolCount={len(active_tools)} "
+            f"schemaChars={serialized_chars(active_tools)}"
+        )
         cache_fields = prompt_cache_request_fields(
             self.responses_features,
             self.model,
@@ -746,7 +802,7 @@ class AgentController:
         )
         cache_key = str(cache_fields.get("prompt_cache_key", "disabled"))
         breakdown = self._measure_model_request(
-            input_items,
+            request_input,
             active_tools,
             state,
             context_payload,
@@ -767,12 +823,12 @@ class AgentController:
             can_compact = (
                 self.responses_features.compact
                 and self.compaction_count < maximum_compactions
-                and self.model_request_count + 1 < self.max_model_requests_per_cycle
+                and self.max_model_requests_per_cycle - self.model_request_count > 2
             )
             if can_compact:
                 compacted_input = self._compact_continuation(
                     previous_response_id,
-                    input_items,
+                    request_input,
                     breakdown.estimated_input_tokens,
                     cache_fields,
                     cache_key,
@@ -782,24 +838,31 @@ class AgentController:
                     previous_response_id = None
                     self.previous_response_id = None
                     self.carried_context_chars = 0
-                    breakdown = self._measure_model_request(
-                        input_items,
-                        active_tools,
-                        state,
-                        context_payload,
-                        carried_context_chars=0,
-                    )
-                    print(
-                        "[COMPACTION] "
-                        f"triggered=true beforeEstimatedTokens={self._last_compaction_before_tokens} "
-                        f"afterEstimatedTokens={breakdown.estimated_input_tokens} "
-                        f"cycleCompactions={self.compaction_count}"
-                    )
-                    print(breakdown.as_log_line())
+                active_tools, tool_mode = self._request_tool_surface()
+                request_input = self._with_decision_budget(input_items)
+                breakdown = self._measure_model_request(
+                    request_input,
+                    active_tools,
+                    state,
+                    context_payload,
+                    carried_context_chars=0 if compacted_input is not None else self.carried_context_chars,
+                )
+                print(
+                    "[COMPACTION] "
+                    f"triggered={str(compacted_input is not None).lower()} "
+                    f"beforeEstimatedTokens={self._last_compaction_before_tokens} "
+                    f"afterEstimatedTokens={breakdown.estimated_input_tokens} "
+                    f"cycleCompactions={self.compaction_count}"
+                )
+                print(
+                    f"[BUDGET] requestsRemaining={self.max_model_requests_per_cycle - self.model_request_count} "
+                    f"finalizationReserved=true toolMode={tool_mode}"
+                )
+                print(breakdown.as_log_line())
             else:
                 reason = "unsupported"
                 if self.responses_features.compact:
-                    reason = "limitReached" if self.compaction_count >= maximum_compactions else "modelRequestLimit"
+                    reason = "limitReached" if self.compaction_count >= maximum_compactions else "finalizationReserve"
                 print(
                     "[COMPACTION] "
                     f"triggered=false reason={reason} beforeEstimatedTokens={breakdown.estimated_input_tokens} "
@@ -813,18 +876,21 @@ class AgentController:
             "model": self.model,
             "instructions": SYSTEM_INSTRUCTIONS,
             "tools": active_tools,
-            "input": input_items,
+            "input": request_input,
             **cache_fields,
         }
+        if tool_mode == "finalization-only":
+            request["tool_choice"] = {"type": "function", "name": "finish_decision"}
         if previous_response_id:
             request["previous_response_id"] = previous_response_id
         response = self.client.responses.create(**request)
         self.model_request_count = request_number
+        self._last_presented_tool_names = {str(schema.get("name")) for schema in active_tools}
         self.previous_response_id = getattr(response, "id", None)
         # A continuation references prior Responses output server-side. Track
         # the response payload we can observe so its growth remains visible to
         # the preflight estimate without re-sending it from this process.
-        self.carried_context_chars += serialized_chars(input_items) + serialized_chars(getattr(response, "output", []))
+        self.carried_context_chars += serialized_chars(request_input) + serialized_chars(getattr(response, "output", []))
         self._log_response_usage(response, request_number, cache_key, "response")
         return response
 

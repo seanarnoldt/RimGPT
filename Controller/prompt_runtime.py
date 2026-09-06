@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 
-RIMGPT_PROMPT_VERSION = "context-memory-v1-m10b"
+RIMGPT_PROMPT_VERSION = "context-memory-v1-m10c"
 DEFAULT_PROMPT_CACHE_MODE = "implicit"
 PROMPT_CACHE_TTL = "30m"
 DEFAULT_COMPACT_THRESHOLD_TOKENS = 20_000
@@ -75,21 +75,38 @@ def prompt_cache_request_fields(
     return fields
 
 
-def compacted_output_as_input(compacted: Any) -> list[Any]:
+def compacted_output_as_input(compacted: Any) -> list[dict[str, Any]]:
     output = getattr(compacted, "output", None)
     if not isinstance(output, list) or not output:
         raise ValueError("Compaction response did not contain output items")
-    items: list[Any] = []
+    items: list[dict[str, Any]] = []
     for item in output:
-        if isinstance(item, dict):
-            value = dict(item)
-        else:
-            # The Responses SDK accepts its own typed output items as input.
-            # Keeping them typed avoids Pydantic union-serialization warnings
-            # caused by model_dump() on compacted message content.
-            value = item
-        item_type = value.get("type") if isinstance(value, dict) else getattr(value, "type", None)
+        value = _plain_api_value(item)
+        if not isinstance(value, dict):
+            raise ValueError("Compaction output item was not an object")
+        item_type = value.get("type")
         if not item_type:
             raise ValueError("Compaction output item has no type")
         items.append(value)
     return items
+
+
+def _plain_api_value(value: Any) -> Any:
+    """Copy an SDK response model to its wire shape without serializing it."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, dict):
+        return {str(key): _plain_api_value(item) for key, item in value.items() if item is not None}
+    if isinstance(value, (list, tuple)):
+        return [_plain_api_value(item) for item in value]
+
+    values = vars(value) if hasattr(value, "__dict__") else None
+    if isinstance(values, dict):
+        fields_set = getattr(value, "__pydantic_fields_set__", None)
+        included = fields_set if isinstance(fields_set, set) else set(values)
+        return {
+            key: _plain_api_value(values[key])
+            for key in values
+            if key in included and not key.startswith("_") and values[key] is not None
+        }
+    raise ValueError(f"Unsupported compacted output value: {type(value).__name__}")

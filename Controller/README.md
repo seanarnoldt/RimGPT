@@ -53,6 +53,11 @@ that dollar-cost calculation is disabled. Cached input requires its own rate
 when cached tokens are reported; cache writes use the uncached input rate
 unless `RIMGPT_CACHE_WRITE_COST_PER_MILLION` is explicitly configured.
 
+Each model request also receives a compact `decisionBudget`. With two request
+slots remaining, broad read/discovery tools are hidden; with one slot remaining,
+only the required terminal `finish_decision` tool is presented and selected.
+Compaction is skipped when it would enter this reserved finalization window.
+
 First test without executing commands:
 
 ```bash

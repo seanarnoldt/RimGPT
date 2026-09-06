@@ -6,9 +6,10 @@ import warnings
 from pathlib import Path
 from types import SimpleNamespace
 
+from openai._models import construct_type
 from openai._utils import maybe_transform
-from openai.types.responses.response_compact_params import ResponseCompactParams
-from openai.types.responses.response_compaction_item import ResponseCompactionItem
+from openai.types.responses.compacted_response import CompactedResponse
+from openai.types.responses.response_create_params import ResponseCreateParamsNonStreaming
 
 from agent_controller import AgentController, SYSTEM_INSTRUCTIONS
 from bridge import RimWorldBridge
@@ -204,15 +205,37 @@ class StabilizationM10ATests(unittest.TestCase):
         self.assertEqual(result["maxWidth"], 40)
         self.assertEqual(result["requestedWidth"], 41)
 
-    def test_native_compaction_item_passes_without_model_dump_warning(self):
-        item = ResponseCompactionItem(id="cmp_1", encrypted_content="opaque", type="compaction")
-        native = compacted_output_as_input(SimpleNamespace(output=[item]))
-        self.assertIs(native[0], item)
-        payload = {"model": "gpt-5.6", "previous_response_id": "resp_1", "input": native}
+    def test_real_compaction_continuation_shape_has_no_pydantic_warning(self):
+        raw = {
+            "id": "compact-response",
+            "created_at": 1,
+            "object": "response.compaction",
+            "output": [
+                {
+                    "id": "user-message",
+                    "type": "message",
+                    "role": "user",
+                    "status": "completed",
+                    "content": [{"type": "input_text", "text": "authoritative context"}],
+                },
+                {"id": "cmp_1", "encrypted_content": "opaque", "type": "compaction"},
+            ],
+            "usage": {
+                "input_tokens": 1,
+                "input_tokens_details": {"cached_tokens": 0},
+                "output_tokens": 1,
+                "output_tokens_details": {"reasoning_tokens": 0},
+                "total_tokens": 2,
+            },
+        }
+        compacted = construct_type(value=raw, type_=CompactedResponse)
+        plain_input = compacted_output_as_input(compacted)
+        payload = {"model": "gpt-5.6", "instructions": "test", "tools": [], "input": plain_input}
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            transformed = maybe_transform(payload, ResponseCompactParams)
-        self.assertEqual(transformed["input"][0]["type"], "compaction")
+            transformed = maybe_transform(payload, ResponseCreateParamsNonStreaming)
+        self.assertEqual(transformed["input"][0]["content"][0]["type"], "input_text")
+        self.assertEqual(transformed["input"][1]["type"], "compaction")
         self.assertEqual(caught, [])
 
     def test_pricing_components_and_missing_configuration(self):
