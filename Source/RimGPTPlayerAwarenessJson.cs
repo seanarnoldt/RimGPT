@@ -13,11 +13,13 @@ namespace RimGPT
         private const int MaxActiveAlerts = 20;
         private const int MaxActiveLetters = 20;
         private const int MaxRecentEvents = 24;
+        private const int MaxSeenEventIds = 256;
         private const int MaxTextLength = 1200;
         private static readonly FieldInfo ActiveAlertsField = typeof(AlertsReadout).GetField("activeAlerts", BindingFlags.Instance | BindingFlags.NonPublic);
         private static readonly FieldInfo LiveMessagesField = typeof(Messages).GetField("liveMessages", BindingFlags.Static | BindingFlags.NonPublic);
         private static readonly List<AwarenessEntry> RecentEvents = new List<AwarenessEntry>();
         private static readonly HashSet<string> SeenEventIds = new HashSet<string>();
+        private static readonly Queue<string> SeenEventOrder = new Queue<string>();
         private static bool reflectionWarningLogged;
         private static string currentScope;
 
@@ -64,6 +66,7 @@ namespace RimGPT
             currentScope = scope;
             RecentEvents.Clear();
             SeenEventIds.Clear();
+            SeenEventOrder.Clear();
         }
 
         private static void CaptureVisibleEvents()
@@ -208,12 +211,15 @@ namespace RimGPT
             }
 
             SeenEventIds.Add(entry.Id);
+            SeenEventOrder.Enqueue(entry.Id);
+            while (SeenEventOrder.Count > MaxSeenEventIds)
+            {
+                SeenEventIds.Remove(SeenEventOrder.Dequeue());
+            }
             RecentEvents.Insert(0, entry);
             while (RecentEvents.Count > MaxRecentEvents)
             {
-                AwarenessEntry removed = RecentEvents[RecentEvents.Count - 1];
                 RecentEvents.RemoveAt(RecentEvents.Count - 1);
-                SeenEventIds.Remove(removed.Id);
             }
         }
 

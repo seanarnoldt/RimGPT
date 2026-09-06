@@ -189,8 +189,8 @@ class StateDiff:
         return result
 
     def _diff_awareness(self, before: Any, after: Any) -> dict[str, Any]:
-        if not isinstance(before, dict) or not isinstance(after, dict):
-            return change_value(before, after)
+        before = before if isinstance(before, dict) else {}
+        after = after if isinstance(after, dict) else {}
         result: dict[str, Any] = {}
         for field in ("activeAlerts", "activeLetters"):
             old, new = index_by_id(before.get(field)), index_by_id(after.get(field))
@@ -386,7 +386,7 @@ class StateDiff:
         if serialized_chars(result) <= self.max_delta_chars:
             return result
         changes = result.get("changes", {})
-        critical = {key: value for key, value in changes.items() if key in {"threats", "colonists"}}
+        critical = {key: value for key, value in changes.items() if key in {"threats", "colonists", "awareness"}}
         summarized = {
             key: {"changeCount": count_changes(value), "detailsTruncated": True}
             for key, value in sorted(changes.items())

@@ -623,7 +623,7 @@ namespace RimGPT
             WriteBool(json, "indoors", !room.PsychologicallyOutdoors, true);
             WriteBool(json, "enclosed", room.ProperRoom && !room.TouchesMapEdge, true);
             WriteBool(json, "usesOutdoorTemperature", room.UsesOutdoorTemperature, true);
-            WriteBool(json, "suitableForTemperatureControl", room.ProperRoom && !room.TouchesMapEdge && !room.UsesOutdoorTemperature && roofCoverage >= 0.75f, true);
+            WriteBool(json, "suitableForTemperatureControl", room.ProperRoom && !room.TouchesMapEdge && !room.UsesOutdoorTemperature, true);
             WriteInt(json, "cellCount", cellCount, true);
             WriteInt(json, "roofedCellCount", Math.Max(0, cellCount - openRoofCount), true);
             WriteFloat(json, "roofCoverage", roofCoverage, true);

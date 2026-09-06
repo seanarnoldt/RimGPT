@@ -86,7 +86,16 @@ class GameplayAwarenessM10DTests(unittest.TestCase):
         self.assertEqual(len(build_current_summary(state)["awareness"]["important"]), 8)
         source = (Path(__file__).parent.parent / "Source" / "RimGPTPlayerAwarenessJson.cs").read_text()
         self.assertIn("MaxRecentEvents = 24", source)
+        self.assertIn("MaxSeenEventIds = 256", source)
         self.assertNotIn("lookTargets", source)
+
+    def test_awareness_added_to_legacy_baseline_is_semantic_and_survives_compaction(self):
+        baseline = base_state()
+        current = base_state(version=121)
+        current["awareness"] = awareness(1)
+        delta = StateDiff.compare(baseline, current, max_delta_chars=1500)
+        self.assertEqual(delta["changes"]["awareness"]["newEvents"][0]["text"], "Ancient danger")
+        self.assertNotIn("from", delta["changes"]["awareness"])
 
     def test_unenclosed_room_is_explicitly_unsuitable_for_temperature_control(self):
         room = {
