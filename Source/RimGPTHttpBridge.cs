@@ -146,6 +146,12 @@ namespace RimGPT
                     return;
                 }
 
+                if (method == "GET" && path == "/room/at")
+                {
+                    HandleRoomAt(context);
+                    return;
+                }
+
                 if (method == "GET" && path == "/build/options")
                 {
                     HandleBuildOptions(context);
@@ -307,6 +313,27 @@ namespace RimGPT
                 MinZ = minZ,
                 MaxX = maxX,
                 MaxZ = maxZ
+            };
+            int statusCode;
+            string json = RimGPTReadRequestQueue.EnqueueAndWait(request, out statusCode);
+            WriteJson(context.Response, statusCode, json);
+        }
+
+        private static void HandleRoomAt(HttpListenerContext context)
+        {
+            int x;
+            int z;
+            if (!TryReadQueryInt(context, "x", out x) || !TryReadQueryInt(context, "z", out z))
+            {
+                WriteJson(context.Response, 400, "{\"error\":\"missingRoomCoordinates\"}");
+                return;
+            }
+
+            RimGPTReadRequest request = new RimGPTReadRequest
+            {
+                Type = RimGPTReadRequestType.RoomAt,
+                MinX = x,
+                MinZ = z
             };
             int statusCode;
             string json = RimGPTReadRequestQueue.EnqueueAndWait(request, out statusCode);

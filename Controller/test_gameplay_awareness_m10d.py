@@ -150,12 +150,12 @@ class GameplayAwarenessM10DTests(unittest.TestCase):
         self.assertEqual(summary["labor"]["capableIdleColonists"], 1)
         self.assertEqual(summary["labor"]["pendingWork"]["blueprints"], 4)
 
-    def test_prompt_requires_actionable_prerequisites_and_has_m10d_identity(self):
+    def test_prompt_requires_actionable_prerequisites_and_preserves_m10d_guidance(self):
         self.assertIn("convert the blocker into an executable prerequisite", SYSTEM_INSTRUCTIONS)
         self.assertIn("preserve the parent goal as an open loop", SYSTEM_INSTRUCTIONS)
         self.assertIn("temperature-sensitive shelter", SYSTEM_INSTRUCTIONS)
-        self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m10d")
-        self.assertEqual(build_prompt_cache_key("gpt-5.6"), "rimgpt:context-memory-v1-m10d:gpt-5.6")
+        self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m10e")
+        self.assertEqual(build_prompt_cache_key("gpt-5.6"), "rimgpt:context-memory-v1-m10e:gpt-5.6")
 
 
 if __name__ == "__main__":

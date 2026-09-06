@@ -12,6 +12,13 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from decision_handoff import DecisionHandoffError, validate_handoff
+from progress_tracking import (
+    build_progress_signals,
+    empty_stall_metadata,
+    record_verification_outcome,
+    update_open_loop_stalls,
+    validate_stall_metadata,
+)
 from strategic_memory import (
     StrategicMemoryError,
     apply_update as apply_memory_update,
@@ -49,6 +56,7 @@ class StateStore:
         self._decision_baseline: dict[str, Any] | None = None
         self._memory: dict[str, Any] | None = None
         self._decision_handoff: dict[str, Any] | None = None
+        self._stall_metadata: dict[str, Any] | None = None
         self._loaded_current_from_disk = False
 
     @property
@@ -70,6 +78,23 @@ class StateStore:
 
     def get_decision_handoff(self) -> dict[str, Any] | None:
         return copy.deepcopy(self._decision_handoff)
+
+    def get_stall_metadata(self) -> dict[str, Any] | None:
+        return copy.deepcopy(self._stall_metadata)
+
+    def record_verification_result(self, tool: str, arguments: dict[str, Any], *, success: bool) -> None:
+        if self._identity is None or self._stall_metadata is None:
+            return
+        updated = record_verification_outcome(self._stall_metadata, tool, arguments, success=success)
+        if updated == self._stall_metadata:
+            return
+        try:
+            self._atomic_write_json(self._stall_path(), updated)
+        except OSError as exc:
+            raise StateStoreError(f"Could not persist verification stall metadata: {exc}") from exc
+        self._stall_metadata = updated
+        disposition = "cleared" if success else "recorded"
+        self._log(f"[STALL] verification strategy {disposition}: {tool}")
 
     def apply_memory_update(self, update: dict[str, Any]) -> dict[str, Any]:
         """Merge and persist a bounded strategic-memory patch for this colony."""
@@ -136,6 +161,7 @@ class StateStore:
             self._decision_baseline = None
             self._memory = None
             self._decision_handoff = None
+            self._stall_metadata = None
             self._loaded_current_from_disk = False
             self._warn("live state has no loaded colony identity; not persisting it")
             return False
@@ -226,17 +252,26 @@ class StateStore:
         except DecisionHandoffError as exc:
             raise StateStoreError(f"Invalid decision handoff: {exc}") from exc
 
+        progress = build_progress_signals(self._decision_baseline, snapshot)
+        current_stall = self._stall_metadata or empty_stall_metadata(self._identity.as_dict())
+        next_stall = update_open_loop_stalls(current_stall, self._decision_handoff, validated_handoff, progress)
+        next_stall = validate_stall_metadata(next_stall, self._identity.as_dict())
+
         previous_baseline = copy.deepcopy(self._decision_baseline)
         previous_handoff = copy.deepcopy(self._decision_handoff)
+        previous_stall = copy.deepcopy(self._stall_metadata)
         try:
             self._atomic_write_json(self._handoff_path(), self._handoff_envelope(validated_handoff))
             self._atomic_write_json(self._baseline_path(), self._baseline_envelope(snapshot))
+            self._atomic_write_json(self._stall_path(), next_stall)
         except OSError as exc:
             self._restore_decision_artifact(self._handoff_path(), previous_handoff, handoff=True)
             self._restore_decision_artifact(self._baseline_path(), previous_baseline, handoff=False)
+            self._restore_plain_artifact(self._stall_path(), previous_stall)
             raise StateStoreError(f"Could not atomically commit successful decision: {exc}") from exc
         self._decision_handoff = copy.deepcopy(validated_handoff)
         self._decision_baseline = copy.deepcopy(snapshot)
+        self._stall_metadata = next_stall
         self._log("[HANDOFF] successful decision handoff and baseline persisted")
 
     def clear_decision_baseline(self) -> None:
@@ -254,6 +289,7 @@ class StateStore:
         self._decision_baseline = None
         self._memory = None
         self._decision_handoff = None
+        self._stall_metadata = None
         self._loaded_current_from_disk = False
         directory = self.colony_directory
         assert directory is not None
@@ -261,6 +297,7 @@ class StateStore:
             directory.mkdir(parents=True, exist_ok=True)
         self._load_memory(identity, quarantine_corrupt=persist)
         self._load_decision_handoff(identity, quarantine_corrupt=persist)
+        self._load_stall_metadata(identity, quarantine_corrupt=persist)
 
         metadata = self._read_json(self._metadata_path(), "metadata", quarantine_corrupt=persist)
         if metadata is None:
@@ -354,6 +391,25 @@ class StateStore:
             self._memory = empty_memory(identity.as_dict())
             self._log("[MEMORY] Invalid persisted strategic memory; initialized clean memory")
 
+    def _load_stall_metadata(self, identity: StateIdentity, *, quarantine_corrupt: bool = True) -> None:
+        path = self._stall_path()
+        document = self._read_json(
+            path,
+            "stall metadata",
+            warn_missing=False,
+            quarantine_corrupt=quarantine_corrupt,
+        )
+        if document is None:
+            self._stall_metadata = empty_stall_metadata(identity.as_dict())
+            return
+        try:
+            self._stall_metadata = validate_stall_metadata(document, identity.as_dict())
+        except ValueError as exc:
+            self._warn(f"invalid stall metadata: {exc}")
+            if quarantine_corrupt:
+                self._quarantine(path)
+            self._stall_metadata = empty_stall_metadata(identity.as_dict())
+
     def _metadata_for(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         assert self._identity is not None
         game = snapshot.get("game") if isinstance(snapshot.get("game"), dict) else {}
@@ -422,6 +478,10 @@ class StateStore:
         assert self.colony_directory is not None
         return self.colony_directory / "decision_handoff.json"
 
+    def _stall_path(self) -> Path:
+        assert self.colony_directory is not None
+        return self.colony_directory / "stall_metadata.json"
+
     def _restore_decision_artifact(self, path: Path, value: dict[str, Any] | None, *, handoff: bool) -> None:
         try:
             if value is None:
@@ -429,6 +489,15 @@ class StateStore:
             else:
                 envelope = self._handoff_envelope(value) if handoff else self._baseline_envelope(value)
                 self._atomic_write_json(path, envelope)
+        except OSError as exc:
+            self._warn(f"could not restore {path.name} after failed decision commit: {exc}")
+
+    def _restore_plain_artifact(self, path: Path, value: dict[str, Any] | None) -> None:
+        try:
+            if value is None:
+                path.unlink(missing_ok=True)
+            else:
+                self._atomic_write_json(path, value)
         except OSError as exc:
             self._warn(f"could not restore {path.name} after failed decision commit: {exc}")
 

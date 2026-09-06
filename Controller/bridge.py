@@ -63,6 +63,9 @@ class RimWorldBridge:
             params={"minX": min_x, "minZ": min_z, "maxX": max_x, "maxZ": max_z},
         )
 
+    def inspect_room_at(self, x: int, z: int) -> dict[str, Any]:
+        return self._request_json("GET", "/room/at", params={"x": x, "z": z})
+
     def list_build_options(self, category: str | None = None, search: str | None = None) -> dict[str, Any]:
         params: dict[str, Any] = {}
         if category:

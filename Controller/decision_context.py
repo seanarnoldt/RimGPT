@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 from colony_state_query import ColonyStateQuery, compact_item, dict_list, select_fields
 from context_telemetry import estimate_tokens, serialized_chars
+from progress_tracking import build_progress_signals, build_stall_context
 from state_diff import StateDiff
 from state_store import StateStore, snapshot_version
 
@@ -42,16 +43,23 @@ class DecisionContextBuilder:
         delta = self.state_store.get_changes_since_last_decision()
         memory = self.state_store.get_memory()
         previous_decision = self.state_store.get_decision_handoff()
+        progress = build_progress_signals(self.state_store.get_decision_baseline(), state)
         context: dict[str, Any] = {
             "contextVersion": CONTEXT_VERSION,
             "bootstrap": bool(delta.get("bootstrapRequired")),
             "strategicMemory": memory or {},
             "currentSummary": build_current_summary(state),
             "changesSinceLastDecision": delta,
+            "progressSinceLastDecision": progress,
             "trigger": build_context_trigger(trigger, state, delta),
         }
         if previous_decision is not None:
             context["previousDecision"] = previous_decision
+        stall_context = build_stall_context(
+            self.state_store.get_stall_metadata(), previous_decision, progress
+        )
+        if stall_context is not None:
+            context["stallRecovery"] = stall_context
         if context["bootstrap"]:
             context["bootstrapState"] = build_bootstrap_state(state)
             context = bound_bootstrap_context(context, self.max_bootstrap_chars)
@@ -72,6 +80,8 @@ class DecisionContextBuilder:
             f"fullStateChars={full_chars} memoryChars={serialized_chars(context.get('strategicMemory', {}))} "
             f"summaryChars={serialized_chars(context.get('currentSummary', {}))} "
             f"deltaChars={serialized_chars(context.get('changesSinceLastDecision', {}))} "
+            f"progressChars={serialized_chars(context.get('progressSinceLastDecision', {}))} "
+            f"stallChars={serialized_chars(context.get('stallRecovery', {}))} "
             f"triggerChars={serialized_chars(context.get('trigger', {}))} "
             f"decisionHandoffChars={serialized_chars(context.get('previousDecision')) if 'previousDecision' in context else 0} "
             f"compactDynamicChars={compact_chars} dynamicCompression={compression:.1f}x fullStateSent=false"
@@ -94,6 +104,7 @@ class DecisionContextBuilder:
             "authoritative": not stale,
             "currentSummary": build_current_summary(current),
             "changesSinceToolRound": StateDiff.compare(before_state, current),
+            "progressSinceToolRound": build_progress_signals(before_state, current),
         }
         if note:
             result["note"] = note

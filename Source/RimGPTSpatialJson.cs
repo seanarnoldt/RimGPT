@@ -110,6 +110,34 @@ namespace RimGPT
             return json.ToString();
         }
 
+        public static string BuildRoomAtJson(int x, int z)
+        {
+            if (Current.Game == null || Find.CurrentMap == null)
+            {
+                return "{\"gameLoaded\":false}";
+            }
+
+            Map map = Find.CurrentMap;
+            IntVec3 cell = new IntVec3(x, 0, z);
+            if (!cell.InBounds(map))
+            {
+                return "{\"error\":\"cellOutOfBounds\"}";
+            }
+            if (cell.Fogged(map))
+            {
+                return "{\"error\":\"cellNotVisible\"}";
+            }
+
+            StringBuilder json = new StringBuilder(512);
+            json.Append("{\"schemaVersion\":2,\"gameLoaded\":true");
+            json.Append(",\"mapId\":\"map-").Append(map.uniqueID).Append("\"");
+            WritePosition(json, "position", cell, true);
+            WriteBool(json, "roofedAtCell", cell.Roofed(map), true);
+            WriteRoom(json, "room", RegionAndRoomQuery.RoomAt(cell, map), map, true);
+            json.Append("}");
+            return json.ToString();
+        }
+
         private static void WriteTerrainRuns(StringBuilder json, Map map, int minX, int minZ, int maxX, int maxZ, bool comma)
         {
             WriteName(json, "terrainRows", comma);

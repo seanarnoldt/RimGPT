@@ -79,6 +79,9 @@ namespace RimGPT
                         case RimGPTReadRequestType.MapRegion:
                             json = RimGPTSpatialJson.BuildMapRegionJson(request.MinX, request.MinZ, request.MaxX, request.MaxZ);
                             break;
+                        case RimGPTReadRequestType.RoomAt:
+                            json = RimGPTSpatialJson.BuildRoomAtJson(request.MinX, request.MinZ);
+                            break;
                         case RimGPTReadRequestType.BuildOptions:
                             json = RimGPTCatalogJson.BuildBuildOptionsJson(request.Category, request.Search);
                             break;

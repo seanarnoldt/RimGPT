@@ -15,7 +15,7 @@ CATALOG_TOOLS = {"list_build_options", "get_build_info", "list_growable_plants",
 CAPABILITY_TOOLS = {"list_capabilities", "enable_capability"}
 TERMINAL_TOOLS = {"finish_decision"}
 READ_TOOLS = CATALOG_TOOLS | CAPABILITY_TOOLS | {
-    "get_colony_state", "inspect_map", "check_build_placements", "check_zone_placement", "finish_decision"
+    "get_colony_state", "inspect_room_at", "inspect_map", "check_build_placements", "check_zone_placement", "finish_decision"
 }
 
 
@@ -129,6 +129,8 @@ class ModelToolResultFormatter:
             return {"success": True, **drop_nulls(copy.deepcopy(result))}
         if tool_name == "get_colony_state":
             return {"success": True, **drop_nulls(copy.deepcopy(result))}
+        if tool_name == "inspect_room_at":
+            return compact_room_at(result)
         if tool_name == "inspect_map":
             return compact_inspect_map(result)
         if tool_name == "check_build_placements":
@@ -233,6 +235,23 @@ def compact_inspect_map(raw: dict[str, Any]) -> dict[str, Any]:
         "plantGroups": [plant_groups[key] for key in sorted(plant_groups)],
         "zones": zones,
         "truncated": bool(raw.get("truncated")) or len(raw_things) >= 240,
+    }
+    return drop_nulls(result)
+
+
+def compact_room_at(raw: dict[str, Any]) -> dict[str, Any]:
+    position = raw.get("position") if isinstance(raw.get("position"), dict) else {}
+    room = raw.get("room") if isinstance(raw.get("room"), dict) else None
+    result: dict[str, Any] = {
+        "success": True,
+        "mapId": raw.get("mapId"),
+        "x": position.get("x"),
+        "z": position.get("z"),
+        "roofedAtCell": raw.get("roofedAtCell"),
+        "room": "unroomed" if room is None else {
+            "id": room.get("id"),
+            **compact_room_facts(room),
+        },
     }
     return drop_nulls(result)
 

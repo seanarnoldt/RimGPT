@@ -100,8 +100,23 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "type": "function",
+        "name": "inspect_room_at",
+        "description": "Read room, enclosure, roof, and temperature facts at one visible x/z cell. Use for room verification; inspect_map is for spatial planning.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "x": {"type": "integer"},
+                "z": {"type": "integer"},
+            },
+            "required": ["x", "z"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
         "name": "inspect_map",
-        "description": "Read-only inspection of a bounded current-map RimWorld x/z rectangle. Bounds are inclusive, so max_x-min_x+1 and max_z-min_z+1 must each be at most 40. Prefer focused 15x15 to 20x20 planning regions; larger regions remain valid when needed. Hidden/fogged contents are not exposed.",
+        "description": "Read-only spatial planning inspection of a bounded current-map RimWorld x/z rectangle. Use inspect_room_at, not this tool, for enclosure or room-status verification. Bounds are inclusive, so max_x-min_x+1 and max_z-min_z+1 must each be at most 40. Prefer focused 15x15 to 20x20 planning regions. Hidden/fogged contents are not exposed.",
         "strict": True,
         "parameters": {
             "type": "object",

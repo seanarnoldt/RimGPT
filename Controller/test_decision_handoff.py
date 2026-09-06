@@ -185,7 +185,7 @@ class DecisionHandoffTests(unittest.TestCase):
 
     def test_core_terminal_schema_is_bounded(self):
         schemas = ActiveToolSet(DEFAULT_TOOL_REGISTRY).schemas()
-        self.assertEqual(len(schemas), 6)
+        self.assertEqual(len(schemas), 7)
         self.assertEqual(schemas[0]["name"], "finish_decision")
         self.assertLess(serialized_chars(schemas), 4_000)
 

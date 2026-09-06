@@ -40,6 +40,7 @@ CAPABILITY_SPECS = (
         (
             ("finish_decision", "controller:finish_decision"),
             ("get_colony_state", "read:get_colony_state"),
+            ("inspect_room_at", "read:inspect_room_at"),
             ("inspect_map", "read:inspect_map"),
             ("set_speed", "command:set_speed"),
             ("list_capabilities", "controller:list_capabilities"),

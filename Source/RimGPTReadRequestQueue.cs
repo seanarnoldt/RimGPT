@@ -8,6 +8,7 @@ namespace RimGPT
     public enum RimGPTReadRequestType
     {
         MapRegion,
+        RoomAt,
         BuildOptions,
         BuildInfo,
         GrowablePlants,
