@@ -163,19 +163,25 @@ class StateStore:
         current_version = snapshot_version(self._current_state) if self._current_state is not None else None
         if current_version is not None and incoming_version is not None:
             if incoming_version == current_version:
-                self._loaded_current_from_disk = False
-                return False
-            if incoming_version < current_version:
+                if self._loaded_current_from_disk and is_safe_snapshot_stream_reset(self._current_state, snapshot):
+                    self._log("[STATESTORE] recognized bridge snapshot counter reset; retaining compatible decision baseline")
+                else:
+                    self._loaded_current_from_disk = False
+                    return False
+            elif incoming_version < current_version:
                 if not self._loaded_current_from_disk:
                     self._log(
                         f"[STATESTORE] ignored older snapshot {incoming_version}; current={current_version}"
                     )
                     return False
-                self._log("[STATESTORE] snapshot lineage reset or ambiguous; using fresh live state")
-                if persist:
-                    self.clear_decision_baseline()
+                if is_safe_snapshot_stream_reset(self._current_state, snapshot):
+                    self._log("[STATESTORE] recognized bridge snapshot counter reset; retaining compatible decision baseline")
                 else:
-                    self._decision_baseline = None
+                    self._log("[STATESTORE] snapshot lineage reset or ambiguous; using fresh live state")
+                    if persist:
+                        self.clear_decision_baseline()
+                    else:
+                        self._decision_baseline = None
 
         self._current_state = copy.deepcopy(snapshot)
         self._loaded_current_from_disk = False
@@ -516,6 +522,40 @@ def snapshot_ticks(snapshot: dict[str, Any]) -> int | None:
     data = snapshot.get("snapshot")
     value = data.get("ticksGame") if isinstance(data, dict) else None
     return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def is_safe_snapshot_stream_reset(
+    previous: dict[str, Any] | None,
+    incoming: dict[str, Any] | None,
+) -> bool:
+    """Recognize a bridge-local counter restart without guessing colony identity.
+
+    `colonyLineageId` is persisted by RimGPT's GameComponent. A non-regressing
+    game tick on that same lineage/map/schema proves this is a later observation
+    of the same save, while the bridge's process-local snapshot counter may have
+    restarted at zero.
+    """
+    if not isinstance(previous, dict) or not isinstance(incoming, dict):
+        return False
+    old_identity = identity_from_state(previous)
+    new_identity = identity_from_state(incoming)
+    if old_identity is None or new_identity is None or old_identity.key != new_identity.key:
+        return False
+    if state_schema_version(previous) != state_schema_version(incoming):
+        return False
+    old_game = previous.get("game") if isinstance(previous.get("game"), dict) else {}
+    new_game = incoming.get("game") if isinstance(incoming.get("game"), dict) else {}
+    if old_game.get("currentMapId") != new_game.get("currentMapId"):
+        return False
+    old_version = snapshot_version(previous)
+    new_version = snapshot_version(incoming)
+    old_ticks = snapshot_ticks(previous)
+    new_ticks = snapshot_ticks(incoming)
+    if None in (old_version, new_version, old_ticks, new_ticks):
+        return False
+    return new_version <= old_version and new_ticks >= old_ticks and (
+        new_version < old_version or new_ticks > old_ticks
+    )
 
 
 def utc_now() -> str:

@@ -270,6 +270,20 @@ class StateDiffTests(unittest.TestCase):
         self.assertEqual(StateDiff.compare(base_state(lineage="other"), current)["reason"], "colonyIdentityChanged")
         self.assertEqual(StateDiff.compare(base_state(schema=3), current)["reason"], "incompatibleStateSchema")
 
+    def test_safe_bridge_snapshot_counter_reset_keeps_semantic_delta(self):
+        baseline = base_state(version=120, ticks=1_000)
+        current = base_state(version=1, ticks=1_010)
+        current["resources"]["available"]["wood"] = 200
+        delta = StateDiff.compare(baseline, current)
+        self.assertFalse(delta.get("bootstrapRequired", False))
+        self.assertTrue(delta["snapshotStreamReset"])
+        self.assertEqual(delta["changes"]["resources"]["available"]["wood"], {"from": 180, "to": 200})
+
+    def test_regressing_ticks_with_reset_counter_remains_ambiguous(self):
+        baseline = base_state(version=120, ticks=1_000)
+        current = base_state(version=1, ticks=999)
+        self.assertEqual(StateDiff.compare(baseline, current)["reason"], "snapshotLineageChanged")
+
     def test_diff_is_deterministic_and_does_not_mutate_inputs(self):
         baseline, current = base_state(), base_state(version=121)
         current["resources"]["available"]["wood"] = 200

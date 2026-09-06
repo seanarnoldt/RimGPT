@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 
 DEFAULT_MAX_MODEL_RESULT_CHARS = 12_000
-MAX_INSPECT_MAP_CHARS = 24_000
+MAX_INSPECT_MAP_CHARS = 8_000
 MAX_ERROR_CHARS = 800
 CATALOG_TOOLS = {"list_build_options", "get_build_info", "list_growable_plants", "list_recipes"}
 CAPABILITY_TOOLS = {"list_capabilities", "enable_capability"}
@@ -191,13 +191,14 @@ class ModelToolResultFormatter:
 
 
 def compact_inspect_map(raw: dict[str, Any]) -> dict[str, Any]:
+    rooms = RoomReferenceEncoder()
     palette: list[dict[str, Any]] = []
     palette_index: dict[str, int] = {}
     rows: list[dict[str, Any]] = []
     for row in dict_list(raw.get("terrainRows")):
         runs: list[list[int]] = []
         for run in dict_list(row.get("runs")):
-            cell = compact_cell(run.get("cell"))
+            cell = compact_cell(run.get("cell"), rooms)
             key = json.dumps(cell, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
             index = palette_index.get(key)
             if index is None:
@@ -214,7 +215,7 @@ def compact_inspect_map(raw: dict[str, Any]) -> dict[str, Any]:
         if "growth" in thing or thing.get("type") == "plant":
             group_plant(plant_groups, thing)
         else:
-            things.append(compact_map_thing(thing))
+            things.append(compact_map_thing(thing, rooms))
 
     zones = [
         drop_nulls(select_fields(zone, ("id", "type", "label", "cellCount", "bounds", "plantDef", "priority", "preset")))
@@ -224,12 +225,10 @@ def compact_inspect_map(raw: dict[str, Any]) -> dict[str, Any]:
         "success": True,
         "mapId": raw.get("mapId"),
         "bounds": copy.deepcopy(raw.get("bounds")),
-        "encoding": {
-            "terrainRuns": "Each run is [xStart,length,terrainPaletteId] on the row z.",
-            "plantCells": "Each plant cell is [x,z]; growth micro-values are omitted.",
-        },
         "terrainPalette": palette,
         "terrainRows": rows,
+        "rooms": rooms.entries,
+        "outdoorRoom": rooms.outdoor_facts,
         "things": sorted(things, key=map_thing_priority),
         "plantGroups": [plant_groups[key] for key in sorted(plant_groups)],
         "zones": zones,
@@ -238,7 +237,74 @@ def compact_inspect_map(raw: dict[str, Any]) -> dict[str, Any]:
     return drop_nulls(result)
 
 
-def compact_cell(value: Any) -> dict[str, Any]:
+class RoomReferenceEncoder:
+    """Intern room facts once per map result; raw inspection remains diagnostic-rich."""
+
+    def __init__(self) -> None:
+        self._references: dict[str, str] = {}
+        self.entries: list[dict[str, Any]] = []
+        self.outdoor_facts: dict[str, Any] | None = None
+
+    def reference(self, value: Any) -> str:
+        if not isinstance(value, dict):
+            return "unroomed"
+        if is_outdoor_room(value):
+            source_id = value.get("id")
+            if isinstance(source_id, str) and source_id:
+                self._references[source_id] = "outdoor"
+            if self.outdoor_facts is None:
+                self.outdoor_facts = compact_outdoor_room_facts(value)
+            return "outdoor"
+
+        source_id = value.get("id")
+        key = str(source_id) if isinstance(source_id, str) and source_id else json.dumps(
+            compact_room_facts(value), sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        )
+        existing = self._references.get(key)
+        if existing is not None:
+            # An edifice may name an adjacent room before a terrain cell or
+            # thing supplies that room's facts. Promote that placeholder when
+            # the authoritative metadata arrives.
+            facts = compact_room_facts(value)
+            if facts:
+                self.entries[int(existing[1:])] = {"id": existing, **facts}
+            return existing
+
+        reference = f"r{len(self.entries)}"
+        self._references[key] = reference
+        self.entries.append({"id": reference, **compact_room_facts(value)})
+        return reference
+
+
+def is_outdoor_room(value: dict[str, Any]) -> bool:
+    return value.get("indoors") is False and value.get("usesOutdoorTemperature") is True
+
+
+def compact_room_facts(value: dict[str, Any]) -> dict[str, Any]:
+    return drop_nulls({
+        "indoors": value.get("indoors"),
+        "enclosed": value.get("enclosed"),
+        "usesOutdoorTemperature": value.get("usesOutdoorTemperature"),
+        "suitableForTemperatureControl": value.get("suitableForTemperatureControl"),
+        "cellCount": value.get("cellCount"),
+        "roofedCellCount": value.get("roofedCellCount"),
+        "roofCoverage": value.get("roofCoverage"),
+        "temperature": value.get("temperature"),
+        "bounds": copy.deepcopy(value.get("bounds")),
+    })
+
+
+def compact_outdoor_room_facts(value: dict[str, Any]) -> dict[str, Any]:
+    """Keep the environmental fact once; exterior geometry is not actionable."""
+    return drop_nulls({
+        "roofCoverage": value.get("roofCoverage"),
+        "temperature": value.get("temperature"),
+        "usesOutdoorTemperature": True,
+        "suitableForTemperatureControl": False,
+    })
+
+
+def compact_cell(value: Any, rooms: RoomReferenceEncoder) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {"unknown": True}
     if value.get("fog") is True:
@@ -250,8 +316,8 @@ def compact_cell(value: Any) -> dict[str, Any]:
         "walkable": value.get("walkable"),
         "buildable": value.get("buildable"),
         "roofed": value.get("roofed"),
-        "room": copy.deepcopy(value.get("room")),
-        "adjacentRoomIds": copy.deepcopy(value.get("adjacentRoomIds")),
+        "room": rooms.reference(value.get("room")),
+        "adjacentRooms": [rooms.reference({"id": room_id}) for room_id in string_list(value.get("adjacentRoomIds"))],
         "water": value.get("water"),
         "growingZone": value.get("canCreateGrowingZone"),
         "stockpileZone": value.get("canCreateStockpile"),
@@ -263,6 +329,7 @@ def compact_cell(value: Any) -> dict[str, Any]:
 def decode_inspect_map(compact: dict[str, Any]) -> dict[tuple[int, int], dict[str, Any]]:
     """Test/debug helper that reconstructs model-visible terrain cell facts."""
     palette = {safe_int(item.get("id")): {key: copy.deepcopy(value) for key, value in item.items() if key != "id"} for item in dict_list(compact.get("terrainPalette"))}
+    room_table = {str(item.get("id")): {key: copy.deepcopy(value) for key, value in item.items() if key != "id"} for item in dict_list(compact.get("rooms"))}
     cells: dict[tuple[int, int], dict[str, Any]] = {}
     for row in dict_list(compact.get("terrainRows")):
         z = safe_int(row.get("z"))
@@ -271,11 +338,25 @@ def decode_inspect_map(compact: dict[str, Any]) -> dict[tuple[int, int], dict[st
                 continue
             x_start, length, palette_id = (safe_int(item) for item in run)
             for x in range(x_start, x_start + length):
-                cells[(x, z)] = copy.deepcopy(palette.get(palette_id, {"unknown": True}))
+                cell = copy.deepcopy(palette.get(palette_id, {"unknown": True}))
+                room_ref = cell.get("room")
+                if room_ref in room_table:
+                    cell["room"] = copy.deepcopy(room_table[room_ref])
+                elif room_ref == "outdoor":
+                    cell["room"] = {
+                        "indoors": False,
+                        "enclosed": False,
+                        "usesOutdoorTemperature": True,
+                        "suitableForTemperatureControl": False,
+                        **copy.deepcopy(compact.get("outdoorRoom") or {}),
+                    }
+                elif room_ref == "unroomed":
+                    cell["room"] = None
+                cells[(x, z)] = cell
     return cells
 
 
-def compact_map_thing(thing: dict[str, Any]) -> dict[str, Any]:
+def compact_map_thing(thing: dict[str, Any], rooms: RoomReferenceEncoder) -> dict[str, Any]:
     position = thing.get("position") if isinstance(thing.get("position"), dict) else {}
     result: dict[str, Any] = {
         "id": thing.get("id"),
@@ -285,7 +366,7 @@ def compact_map_thing(thing: dict[str, Any]) -> dict[str, Any]:
         "x": position.get("x"),
         "z": position.get("z"),
         "rotation": thing.get("rotation"),
-        "room": copy.deepcopy(thing.get("room")),
+        "room": rooms.reference(thing.get("room")),
     }
     size = thing.get("size")
     if isinstance(size, dict) and (safe_int(size.get("x")) != 1 or safe_int(size.get("z")) != 1):
@@ -604,6 +685,10 @@ def drop_nulls(value: Any) -> Any:
 
 def dict_list(value: Any) -> list[dict[str, Any]]:
     return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def string_list(value: Any) -> list[str]:
+    return [item for item in value if isinstance(item, str) and item] if isinstance(value, list) else []
 
 
 def short_text(value: Any, limit: int = MAX_ERROR_CHARS) -> str:

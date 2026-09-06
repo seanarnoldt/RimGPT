@@ -7,7 +7,13 @@ import hashlib
 import json
 from typing import Any, Callable
 
-from state_store import identity_from_state, snapshot_ticks, snapshot_version, state_schema_version
+from state_store import (
+    identity_from_state,
+    is_safe_snapshot_stream_reset,
+    snapshot_ticks,
+    snapshot_version,
+    state_schema_version,
+)
 
 
 DEFAULT_MAX_ENTITY_DETAILS = 40
@@ -63,6 +69,8 @@ class StateDiff:
             "elapsedTicks": after_ticks - before_ticks if before_ticks is not None and after_ticks is not None else None,
             "changes": changes,
         }
+        if is_safe_snapshot_stream_reset(baseline, current):
+            result["snapshotStreamReset"] = True
         return self._bound_final(result)
 
     def _validate(self, baseline: Any, current: Any) -> str | None:
@@ -86,7 +94,12 @@ class StateDiff:
             return "currentMapChanged"
         old_version = snapshot_version(baseline)
         new_version = snapshot_version(current)
-        if old_version is not None and new_version is not None and new_version < old_version:
+        if (
+            old_version is not None
+            and new_version is not None
+            and new_version < old_version
+            and not is_safe_snapshot_stream_reset(baseline, current)
+        ):
             return "snapshotLineageChanged"
         return None
 

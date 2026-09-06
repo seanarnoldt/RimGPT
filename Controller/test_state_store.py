@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from state_diff import StateDiff
 from state_store import PERSISTENCE_FORMAT_VERSION, StateStore, identity_from_state
 
 
@@ -137,6 +138,41 @@ class StateStoreTests(unittest.TestCase):
         self.assertFalse(store.update_current_state(snapshot(version=10, ticks=501)))
         self.assertFalse(store.update_current_state(snapshot(version=9, ticks=499)))
         self.assertEqual(store.get_current_state()["snapshot"]["version"], 10)
+
+    def test_persisted_bridge_counter_reset_keeps_compatible_baseline(self):
+        persisted = snapshot(version=120, ticks=1_000)
+        first = self.store()
+        first.update_current_state(persisted)
+        first.set_decision_baseline(persisted)
+
+        restarted = self.store()
+        reset_snapshot = snapshot(version=1, ticks=1_010)
+        self.assertTrue(restarted.update_current_state(reset_snapshot))
+        self.assertEqual(restarted.get_decision_baseline()["snapshot"]["version"], 120)
+        delta = StateDiff.compare(restarted.get_decision_baseline(), restarted.get_current_state())
+        self.assertFalse(delta.get("bootstrapRequired", False))
+        self.assertTrue(delta["snapshotStreamReset"])
+        self.assertTrue(any("recognized bridge snapshot counter reset" in line for line in self.logs))
+
+    def test_ambiguous_persisted_counter_reset_still_invalidates_baseline(self):
+        persisted = snapshot(version=120, ticks=1_000)
+        first = self.store()
+        first.update_current_state(persisted)
+        first.set_decision_baseline(persisted)
+
+        restarted = self.store()
+        self.assertTrue(restarted.update_current_state(snapshot(version=1, ticks=999)))
+        self.assertIsNone(restarted.get_decision_baseline())
+        self.assertTrue(any("snapshot lineage reset or ambiguous" in line for line in self.logs))
+
+    def test_different_colony_after_restart_still_starts_fresh(self):
+        first = self.store()
+        first.update_current_state(snapshot("lineage-a", version=120, ticks=1_000))
+        first.set_decision_baseline(snapshot("lineage-a", version=120, ticks=1_000))
+
+        restarted = self.store()
+        self.assertTrue(restarted.update_current_state(snapshot("lineage-b", version=1, ticks=1_010)))
+        self.assertIsNone(restarted.get_decision_baseline())
 
     def test_normal_atomic_persistence_leaves_valid_json(self):
         store = self.store()

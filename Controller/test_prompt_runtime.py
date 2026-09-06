@@ -153,6 +153,18 @@ class PromptRuntimeTests(unittest.TestCase):
         self.assertEqual(controller.compaction_count, 1)
         self.assertEqual(controller.model_request_count, 2)
 
+    def test_continuation_over_hard_guard_attempts_its_one_compaction_first(self):
+        responses = SupportedResponses()
+        controller = self.make_controller(responses, threshold=20_000, hard_limit=30_000)
+        controller._request_model(
+            [{"role": "user", "content": [{"type": "input_text", "text": "x" * 100_000}]}],
+            state={},
+            previous_response_id="previous-1",
+        )
+        self.assertEqual(len(responses.compact_calls), 1)
+        self.assertEqual(len(responses.create_calls), 1)
+        self.assertNotIn("previous_response_id", responses.create_calls[0])
+
     def test_max_compactions_prevents_second_compaction(self):
         responses = SupportedResponses()
         controller = self.make_controller(responses, threshold=1, max_compactions=1)
@@ -177,7 +189,7 @@ class PromptRuntimeTests(unittest.TestCase):
                 state={},
                 previous_response_id="previous-1",
             )
-        self.assertEqual(blocked.compact_calls, [])
+        self.assertEqual(len(blocked.compact_calls), 1)
         self.assertEqual(blocked.create_calls, [])
 
     def test_post_compaction_hard_limit_blocks_model_request(self):

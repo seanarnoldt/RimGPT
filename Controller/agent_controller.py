@@ -117,7 +117,7 @@ Use currentSummary.labor to notice capable idle colonists, pending work, and obv
 
 Before placing a large construction batch, preferably call check_build_placements with the planned placements. If several cells fail validation, adjust the plan instead of repeatedly attempting the same cells.
 
-inspect_map uses a terrain palette with row runs encoded as [xStart,length,terrainPaletteId], plus exact explicit things and grouped plant coordinate cells. Use inspect_map to identify a candidate plan, then use the exact build or zone validator before mutation.
+inspect_map uses a terrain palette with row runs encoded as [xStart,length,terrainPaletteId], plus exact explicit things and grouped plant coordinate cells. Terrain and things use room references: resolve rN values through the shared rooms table; outdoor and unroomed are explicit sentinels, and outdoorRoom carries exterior temperature facts. Use inspect_map to identify a candidate plan, then use the exact build or zone validator before mutation.
 
 Successful batch and validator results summarize successes and list only failures. Missing per-cell success entries do not mean execution was omitted. If truncated=true, query a smaller region or narrower catalog when omitted detail matters.
 
@@ -822,8 +822,6 @@ class AgentController:
             f"activeToolSchemaChars={breakdown.tool_schema_chars} cacheKey={cache_key}"
         )
         print(breakdown.as_log_line())
-        self._enforce_context_limit(breakdown)
-
         threshold = getattr(self, "compact_threshold_tokens", DEFAULT_COMPACT_THRESHOLD_TOKENS)
         maximum_compactions = getattr(self, "max_compactions_per_cycle", DEFAULT_MAX_COMPACTIONS_PER_CYCLE)
         if previous_response_id and breakdown.estimated_input_tokens >= threshold:
@@ -876,6 +874,9 @@ class AgentController:
                     f"cycleCompactions={self.compaction_count}"
                 )
 
+        # A continuation may carry previous large map results server-side. Give
+        # the one permitted native compaction attempt a chance to replace that
+        # history before enforcing the unchanged hard guard.
         self._enforce_context_limit(breakdown)
 
         request_number = self.model_request_count + 1

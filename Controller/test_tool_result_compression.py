@@ -72,6 +72,27 @@ def raw_map(size, *, obstacle=False, varied=False):
     return {"schemaVersion": 2, "gameLoaded": True, "mapId": "map-7", "bounds": {"minX": 100, "minZ": 100, "maxX": 99 + size, "maxZ": 99 + size}, "terrainRows": rows, "things": things, "zones": []}
 
 
+def room_aware_map(size=20, *, enclosed=True):
+    result = raw_map(size, obstacle=True, varied=True)
+    room = {
+        "id": "room-7-42",
+        "indoors": enclosed,
+        "enclosed": enclosed,
+        "usesOutdoorTemperature": not enclosed,
+        "suitableForTemperatureControl": enclosed,
+        "cellCount": size * size,
+        "roofedCellCount": size * size if enclosed else 0,
+        "roofCoverage": 1.0 if enclosed else 0.0,
+        "temperature": 21.5 if enclosed else 42.0,
+        "bounds": copy.deepcopy(result["bounds"]),
+    }
+    for row in result["terrainRows"]:
+        for run in row["runs"]:
+            run["cell"] = {**run["cell"], "room": copy.deepcopy(room)}
+    result["things"][0]["room"] = copy.deepcopy(room)
+    return result
+
+
 class ToolResultCompressionTests(unittest.TestCase):
     def setUp(self):
         self.formatter = ModelToolResultFormatter(logger=lambda _: None)
@@ -196,6 +217,43 @@ class ToolResultCompressionTests(unittest.TestCase):
                 self.assertEqual(json.dumps(first, sort_keys=True), json.dumps(second, sort_keys=True))
                 self.assertLess(serialized_chars(first), serialized_chars(raw) * 0.65)
 
+    def test_room_aware_20_by_20_uses_shared_room_table_with_bounded_output(self):
+        compact = self.formatter.format("inspect_map", {"success": True, "result": room_aware_map()}, {})
+        decoded = decode_inspect_map(compact)
+        room_refs = {
+            cell["room"]
+            for item in compact["terrainPalette"]
+            if (cell := {key: value for key, value in item.items() if key != "id"}).get("room", "").startswith("r")
+        }
+        self.assertEqual(len(compact["rooms"]), 1)
+        self.assertEqual(room_refs, {"r0"})
+        self.assertTrue(decoded[(100, 100)]["room"]["suitableForTemperatureControl"])
+        self.assertEqual(decoded[(100, 100)]["room"]["cellCount"], 400)
+        self.assertLess(serialized_chars(compact), 8_000)
+
+    def test_outdoor_room_uses_sentinel_and_retains_temperature_safety_facts(self):
+        compact = self.formatter.format("inspect_map", {"success": True, "result": room_aware_map(enclosed=False)}, {})
+        decoded = decode_inspect_map(compact)
+        self.assertEqual(compact["terrainPalette"][0]["room"], "outdoor")
+        self.assertEqual(compact["rooms"], [])
+        room = decoded[(100, 100)]["room"]
+        self.assertFalse(room["enclosed"])
+        self.assertFalse(room["suitableForTemperatureControl"])
+        self.assertEqual(room["temperature"], 42.0)
+
+    def test_adjacent_room_reference_is_promoted_when_full_room_facts_arrive(self):
+        raw = room_aware_map()
+        first_cell = raw["terrainRows"][0]["runs"][0]["cell"]
+        raw["terrainRows"][0]["runs"][0]["cell"] = {
+            **{key: value for key, value in first_cell.items() if key != "room"},
+            "room": None,
+            "adjacentRoomIds": ["room-7-42"],
+        }
+        compact = self.formatter.format("inspect_map", {"success": True, "result": raw}, {})
+        self.assertEqual(compact["terrainPalette"][0]["adjacentRooms"], ["r0"])
+        self.assertTrue(compact["rooms"][0]["indoors"])
+        self.assertTrue(compact["rooms"][0]["suitableForTemperatureControl"])
+
     def test_map_result_truncation_preserves_critical_thing(self):
         raw = raw_map(30)
         raw["things"] = [
@@ -206,7 +264,7 @@ class ToolResultCompressionTests(unittest.TestCase):
         ]
         model = self.formatter.format("inspect_map", {"success": True, "result": raw}, {})
         self.assertTrue(model["truncated"])
-        self.assertLessEqual(serialized_chars(model), 24_000)
+        self.assertLessEqual(serialized_chars(model), 8_000)
         self.assertEqual(model["things"][0]["id"], "Hostile_1")
 
     def test_catalogs_are_bounded_and_retain_command_defs(self):
@@ -257,6 +315,31 @@ class ToolResultCompressionTests(unittest.TestCase):
         accumulated = 0
         for result in results:
             output = {"type": "function_call_output", "call_id": "call", "output": json.dumps(result, separators=(",", ":"))}
+            chars = serialized_chars(result)
+            accumulated += chars
+            breakdown = measure_context(
+                instructions=SYSTEM_INSTRUCTIONS,
+                tools=TOOLS,
+                input_items=[output],
+                state={"operations": {}, "colonists": [], "map": {}},
+                accumulated_tool_result_chars=accumulated,
+                carried_context_chars=carried,
+                tool_result_chars_this_round=chars,
+            )
+            estimates.append(breakdown.estimated_input_tokens)
+            carried += serialized_chars(output) + 300
+        self.assertLess(max(estimates), 30_000)
+
+    def test_repeated_room_aware_map_results_stay_below_context_guard(self):
+        results = [
+            self.formatter.format("inspect_map", {"success": True, "result": room_aware_map()}, {})
+            for _ in range(3)
+        ]
+        carried = 1_500
+        estimates = []
+        accumulated = 0
+        for index, result in enumerate(results):
+            output = {"type": "function_call_output", "call_id": f"map-{index}", "output": json.dumps(result, separators=(",", ":"))}
             chars = serialized_chars(result)
             accumulated += chars
             breakdown = measure_context(
