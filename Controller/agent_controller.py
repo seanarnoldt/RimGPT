@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 import time
 from typing import Any
@@ -79,7 +80,7 @@ Unresolved committed actions from the previous decision are priorities. Before m
 
 Make meaningful progress, but do not try to solve the entire colony in one decision cycle. Use open loops to carry unfinished work into later cycles. decisionBudget.requestsRemaining includes the response you are currently producing. When that budget is low, stop discovery and finalize. Prefer acting on validated information over repeatedly gathering more information. finish_decision is the required normal terminal action.
 
-If exact current information is needed, call get_colony_state for only the relevant section or use an existing targeted read tool. For room, enclosure, roof, or room-temperature questions use inspect_room_at. Use inspect_map only for actual spatial placement and planning. Do not query every state section reflexively. Start with the summary, delta, and progress signals, then retrieve only details whose uncertainty matters to this decision.
+If exact current information is needed, call get_colony_state for only the relevant section or use an existing targeted read tool. For room, enclosure, roof, or room-temperature questions use inspect_room_at. Use inspect_map only for actual spatial placement and planning. Do not query every state section reflexively. Start with the summary, delta, and progress signals, then retrieve only details whose uncertainty matters to this decision. A repeated unchanged colony-state section returns a compact reuse marker; rely on the earlier result unless a write or fresh state change makes a reread necessary.
 
 Do not invent pawn IDs, resource counts, building existence, map coordinates, work types, threats, or other game state. Use targeted validators and catalog tools when planning construction or zones.
 
@@ -201,6 +202,7 @@ class AgentController:
         self.accumulated_tool_result_chars = 0
         self.tool_result_chars_this_round = 0
         self.raw_tool_results: list[dict[str, Any]] = []
+        self.state_read_cache: dict[str, str] = {}
         self.carried_context_chars = 0
         self.cycle_cost = 0.0
         self.session_cost = 0.0
@@ -600,6 +602,8 @@ class AgentController:
             self.failed_call_counts = {}
         if not hasattr(self, "termination_reason"):
             self.termination_reason = None
+        if not hasattr(self, "state_read_cache"):
+            self.state_read_cache = {}
         self._get_active_tools()
 
     def _begin_cycle(self) -> None:
@@ -611,6 +615,7 @@ class AgentController:
         self.accumulated_tool_result_chars = 0
         self.tool_result_chars_this_round = 0
         self.raw_tool_results = []
+        self.state_read_cache = {}
         self.carried_context_chars = 0
         self.cycle_cost = 0.0
         self.compaction_count = 0
@@ -1016,7 +1021,7 @@ class AgentController:
         started = time.monotonic()
         try:
             if name == "get_colony_state":
-                result = self._get_colony_state_query().get(arguments["section"])
+                result = self._get_colony_state_result(arguments["section"])
             elif name == "finish_decision":
                 previous_handoff = self.state_store.get_decision_handoff()
                 result = prepare_handoff(arguments, previous_handoff)
@@ -1104,6 +1109,34 @@ class AgentController:
         elapsed = time.monotonic() - started
         print(f"[RESULT] {name} completed in {elapsed:.2f}s")
         return {"success": True, "result": result, "elapsedSeconds": round(elapsed, 3)}
+
+    def _get_colony_state_result(self, section: str) -> dict[str, Any]:
+        result = self._get_colony_state_query().get(section)
+        signature = hashlib.sha256(
+            json.dumps(
+                {"truncated": result.get("truncated"), "data": result.get("data")},
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        prior = self.state_read_cache.get(section)
+        self.state_read_cache[section] = signature
+        if prior == signature:
+            print(f"[STATE READ] reused unchanged section={section}")
+            return {
+                "section": section,
+                "snapshotVersion": result.get("snapshotVersion"),
+                "reused": True,
+                "message": "This section is unchanged since the earlier result in this decision cycle.",
+            }
+        return result
+
+    def _clear_state_read_cache(self) -> None:
+        if getattr(self, "state_read_cache", None):
+            self.state_read_cache = {}
+            print("[STATE READ] cache invalidated after a write command")
 
     def _record_verification_result(
         self, name: str, arguments: dict[str, Any], *, success: bool
@@ -1206,6 +1239,7 @@ class AgentController:
                     new_version = snapshot_version(state)
                     print(f"[STATE] Post-action authoritative version={new_version} {summarize_state(state)}")
                     note = "Fresh authoritative state after the completed command batch."
+                self._clear_state_read_cache()
             else:
                 state = self.bridge.get_state()
                 self.current_state = self._accept_authoritative_state(state)

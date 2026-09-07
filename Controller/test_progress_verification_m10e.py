@@ -279,7 +279,7 @@ class ProgressVerificationM10ETests(unittest.TestCase):
             context = DecisionContextBuilder(store, logger=logs.append).build()
         self.assertTrue(context["progressSinceLastDecision"]["relevantStateChanged"])
         self.assertTrue(any("fullStateSent=false" in item for item in logs))
-        self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m10e")
+        self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m10e1")
         self.assertIn("inspect_room_at", SYSTEM_INSTRUCTIONS)
         self.assertIn("Use inspect_map only for actual spatial placement and planning", SYSTEM_INSTRUCTIONS)
 

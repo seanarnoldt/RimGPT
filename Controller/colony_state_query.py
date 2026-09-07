@@ -28,6 +28,7 @@ VALID_SECTIONS = (
 )
 DEFAULT_MAX_SECTION_CHARS = 12_000
 DEFAULT_MAX_ENTRIES = 80
+DEFAULT_MAX_STRATEGIC_BUILDINGS = 36
 
 
 class ColonyStateQueryError(ValueError):
@@ -106,13 +107,15 @@ class ColonyStateQuery:
         buildings = dict_list(state.get("buildings"))
         grouped = Counter(str(item.get("defName") or item.get("label") or item.get("type") or "unknown") for item in buildings)
         groups = [{"defName": key, "count": count} for key, count in sorted(grouped.items())]
-        details = [
-            select_fields(item, ("id", "type", "defName", "label", "position", "rotation", "stuffDef", "hitPoints", "maxHitPoints", "powered"))
-            for item in sorted(buildings, key=building_sort_key)
-        ]
-        details, truncated = bounded_list(details, self.max_entries)
+        details = strategic_buildings(buildings, state)
+        details, truncated = bounded_list(details, min(self.max_entries, DEFAULT_MAX_STRATEGIC_BUILDINGS))
         groups, groups_truncated = bounded_list(groups, self.max_entries)
-        return {"countsByDef": groups, "entries": details, "total": len(buildings)}, truncated or groups_truncated
+        return {
+            "countsByDef": groups,
+            "entries": details,
+            "total": len(buildings),
+            "omittedCompletedCount": max(0, len(buildings) - len(details)),
+        }, truncated or groups_truncated
 
     def _zones(self, state: dict[str, Any]) -> tuple[Any, bool]:
         map_state = state.get("map") if isinstance(state.get("map"), dict) else {}
@@ -338,6 +341,53 @@ def building_sort_key(value: dict[str, Any]) -> tuple[int, str, str]:
     else:
         priority = 2
     return priority, str(value.get("defName") or ""), str(value.get("id") or "")
+
+
+def strategic_buildings(buildings: list[dict[str, Any]], state: dict[str, Any]) -> list[dict[str, Any]]:
+    """Keep actionable construction and operation-linked buildings, not every wall."""
+    by_id = {str(item.get("id")): item for item in buildings if item.get("id") is not None}
+    operation_status = building_operation_status(state, set(by_id))
+    selected = []
+    for item in sorted(buildings, key=building_sort_key):
+        item_id = str(item.get("id")) if item.get("id") is not None else ""
+        construction = str(item.get("type") or "") in ("blueprint", "frame")
+        powered = isinstance(item.get("powered"), bool)
+        status = operation_status.get(item_id)
+        if not construction and not powered and status is None:
+            continue
+        entry = select_fields(item, ("id", "type", "defName", "position", "rotation", "stuffDef", "powered"))
+        if status:
+            entry["operation"] = status
+        selected.append(entry)
+    return selected
+
+
+def building_operation_status(state: dict[str, Any], building_ids: set[str]) -> dict[str, dict[str, Any]]:
+    operations = state.get("operations") if isinstance(state.get("operations"), dict) else {}
+    status: dict[str, dict[str, Any]] = {}
+
+    def add(item: dict[str, Any], kind: str, fields: tuple[str, ...]) -> None:
+        item_id = str(item.get("id")) if item.get("id") is not None else ""
+        if not item_id or item_id not in building_ids:
+            return
+        value = {"kind": kind}
+        value.update(select_fields(item, fields))
+        status[item_id] = value
+
+    for item in dict_list(operations.get("beds")):
+        add(item, "bed", ("medical", "forPrisoners", "owners"))
+    for item in dict_list(operations.get("worktables")):
+        add(item, "worktable", ("powered", "fueled", "operational"))
+    for item in dict_list(operations.get("fuel")):
+        add(item, "fuel", ("fuel", "fuelCapacity", "needsFuel"))
+
+    power = operations.get("power") if isinstance(operations.get("power"), dict) else {}
+    for network in dict_list(power.get("networks")):
+        for item in dict_list(network.get("connectedBuildings")):
+            add(item, "power", ("connected", "powerOn", "switchedOn", "fueled"))
+    for item in dict_list(power.get("unpoweredBuildings")):
+        add(item, "power", ("connected", "powerOn", "switchedOn", "fueled"))
+    return status
 
 
 def int_value(value: Any) -> int:

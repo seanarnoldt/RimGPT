@@ -53,7 +53,7 @@ class StateDiff:
         self._put(changes, "research", self._diff_research(baseline.get("research"), current.get("research")))
         self._put(changes, "threats", self._diff_threats(baseline.get("threats"), current.get("threats")))
         self._put(changes, "awareness", self._diff_awareness(baseline.get("awareness"), current.get("awareness")))
-        self._put(changes, "mapThings", self._diff_generic_collection(baseline.get("mapThings"), current.get("mapThings"), nested=True))
+        self._put(changes, "mapThings", self._diff_map_things(baseline.get("mapThings"), current.get("mapThings")))
         self._put(changes, "map", self._diff_map(baseline.get("map"), current.get("map")))
         self._put(changes, "construction", self._diff_construction(baseline.get("buildings"), current.get("buildings")))
         self._put(changes, "plants", self._diff_plants(baseline.get("plants"), current.get("plants")))
@@ -261,7 +261,7 @@ class StateDiff:
                 transitions.append({"from": construction_summary(source), "to": construction_summary(new[new_id])})
         remaining_old = {key: value for key, value in old.items() if key not in consumed_old}
         remaining_new = {key: value for key, value in new.items() if key not in consumed_new}
-        result = self._diff_indexed_maps(remaining_old, remaining_new, construction_summary)
+        result = self._diff_construction_maps(remaining_old, remaining_new)
         self._bounded_put(result, "transitions", transitions)
         return result
 
@@ -363,6 +363,57 @@ class StateDiff:
                 self._put(result, key, self._diff_id_list(before.get(key), after.get(key), generic_entity_summary))
             return result
         return self._diff_id_list(before, after, generic_entity_summary)
+
+    def _diff_map_things(self, before: Any, after: Any) -> dict[str, Any]:
+        if not isinstance(before, dict) or not isinstance(after, dict):
+            return change_value(before, after)
+        result = {}
+        for key in sorted(set(before) | set(after)):
+            self._put(result, key, self._diff_restart_safe_map_thing_list(before.get(key), after.get(key)))
+        return result
+
+    def _diff_restart_safe_map_thing_list(self, before: Any, after: Any) -> dict[str, Any]:
+        old, new = index_by_id(before), index_by_id(after)
+        matched_old = set(old) & set(new)
+        matched_pairs = [(item_id, item_id) for item_id in sorted(matched_old)]
+        old_unmatched = set(old) - matched_old
+        new_unmatched = set(new) - matched_old
+        old_by_key: dict[tuple[Any, ...], list[str]] = {}
+        new_by_key: dict[tuple[Any, ...], list[str]] = {}
+        for item_id in old_unmatched:
+            old_by_key.setdefault(map_thing_restart_key(old[item_id]), []).append(item_id)
+        for item_id in new_unmatched:
+            new_by_key.setdefault(map_thing_restart_key(new[item_id]), []).append(item_id)
+        for key in sorted(set(old_by_key) & set(new_by_key), key=repr):
+            for old_id, new_id in zip(sorted(old_by_key[key]), sorted(new_by_key[key])):
+                matched_old.add(old_id)
+                new_unmatched.discard(new_id)
+                matched_pairs.append((old_id, new_id))
+
+        result: dict[str, Any] = {}
+        self._bounded_put(result, "added", [generic_entity_summary(new[key]) for key in sorted(new_unmatched)])
+        self._bounded_put(result, "removed", [generic_entity_summary(old[key]) for key in sorted(set(old) - matched_old)])
+        changed = []
+        for old_id, new_id in matched_pairs:
+            delta = map_thing_diff(old[old_id], new[new_id])
+            if delta:
+                changed.append(with_id(new_id, delta))
+        self._bounded_put(result, "changed", changed)
+        return result
+
+    def _diff_construction_maps(
+        self, old: dict[str, dict[str, Any]], new: dict[str, dict[str, Any]]
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        self._bounded_put(result, "added", [construction_summary(new[key]) for key in sorted(new.keys() - old.keys())])
+        self._bounded_put(result, "removed", [construction_summary(old[key]) for key in sorted(old.keys() - new.keys())])
+        changed = []
+        for entity_id in sorted(old.keys() & new.keys()):
+            delta = construction_entity_diff(old[entity_id], new[entity_id])
+            if delta:
+                changed.append(with_id(entity_id, delta))
+        self._bounded_put(result, "changed", changed)
+        return result
 
     def _diff_id_list(self, before: Any, after: Any, summary: Callable[[Any], Any]) -> dict[str, Any]:
         return self._diff_indexed_maps(index_by_id(before), index_by_id(after), summary)
@@ -470,6 +521,33 @@ def generic_entity_diff(before: dict[str, Any], after: dict[str, Any]) -> dict[s
         else:
             result[key] = {"from": compact_value(before.get(key)), "to": compact_value(after.get(key))}
     return result
+
+
+def map_thing_restart_key(item: dict[str, Any]) -> tuple[Any, ...]:
+    position = item.get("position") if isinstance(item.get("position"), dict) else {}
+    return (item.get("defName"), position.get("x"), position.get("z"))
+
+
+def map_thing_diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+    return fields_diff(before, after, ("stackCount", "forbidden"))
+
+
+def construction_entity_diff(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+    result = fields_diff(before, after, ("type", "defName", "position", "rotation", "stuffDef", "powered"))
+    if hitpoint_change_meaningful(before, after):
+        result["hitPoints"] = {"from": before.get("hitPoints"), "to": after.get("hitPoints")}
+    room = construction_room_diff(before.get("room"), after.get("room"))
+    if room:
+        result["room"] = room
+    return result
+
+
+def construction_room_diff(before: Any, after: Any) -> dict[str, Any]:
+    return fields_diff(
+        before,
+        after,
+        ("indoors", "enclosed", "usesOutdoorTemperature", "suitableForTemperatureControl", "cellCount", "roofedCellCount", "roofCoverage", "bounds"),
+    )
 
 
 def keyed_field_diff(before: Any, after: Any, key_field: str) -> dict[str, Any]:
