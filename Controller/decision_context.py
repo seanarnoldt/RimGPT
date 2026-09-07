@@ -10,6 +10,7 @@ from typing import Any, Callable
 from colony_state_query import ColonyStateQuery, compact_item, dict_list, select_fields
 from context_telemetry import estimate_tokens, serialized_chars
 from progress_tracking import build_progress_signals, build_stall_context
+from risk_tracking import build_operational_risk_summary
 from state_diff import StateDiff
 from state_store import StateStore, snapshot_version
 
@@ -44,6 +45,9 @@ class DecisionContextBuilder:
         memory = self.state_store.get_memory()
         previous_decision = self.state_store.get_decision_handoff()
         progress = build_progress_signals(self.state_store.get_decision_baseline(), state)
+        operational_risk = build_operational_risk_summary(
+            self.state_store.get_decision_baseline(), state, self.state_store.get_risk_metadata()
+        )
         context: dict[str, Any] = {
             "contextVersion": CONTEXT_VERSION,
             "bootstrap": bool(delta.get("bootstrapRequired")),
@@ -51,6 +55,7 @@ class DecisionContextBuilder:
             "currentSummary": build_current_summary(state),
             "changesSinceLastDecision": delta,
             "progressSinceLastDecision": progress,
+            "operationalRisk": operational_risk,
             "trigger": build_context_trigger(trigger, state, delta),
         }
         if previous_decision is not None:
@@ -105,6 +110,9 @@ class DecisionContextBuilder:
             "currentSummary": build_current_summary(current),
             "changesSinceToolRound": StateDiff.compare(before_state, current),
             "progressSinceToolRound": build_progress_signals(before_state, current),
+            "operationalRisk": build_operational_risk_summary(
+                before_state, current, self.state_store.get_risk_metadata()
+            ),
         }
         if note:
             result["note"] = note
@@ -354,7 +362,10 @@ def health_summary(colonists: list[dict[str, Any]]) -> dict[str, Any]:
             emergency = True
         for hediff in dict_list(health.get("hediffs")):
             def_name = str(hediff.get("defName") or "")
-            if any(marker in def_name.lower() for marker in ("heatstroke", "hypothermia", "bloodloss", "infection")):
+            if (
+                any(marker in def_name.lower() for marker in ("heatstroke", "hypothermia", "bloodloss", "infection"))
+                and safe_float(hediff.get("severity")) >= 0.4
+            ):
                 urgent_conditions.append({
                     "pawnId": pawn.get("id"),
                     "defName": hediff.get("defName"),

@@ -237,7 +237,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "name": "draft",
-        "description": "Draft a player-controlled colonist by stable RimWorld ThingID. Only works for alive spawned player colonists that can be drafted.",
+        "description": "High-cost tactical intervention: draft a player-controlled colonist by stable RimWorld ThingID. Prefer for combat or genuine immediate danger; do not use solely for mild non-combat heat/cold exposure. Only works for alive spawned player colonists that can be drafted.",
         "strict": True,
         "parameters": {
             "type": "object",
@@ -271,7 +271,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "name": "move",
-        "description": "Issue a normal RimWorld move order to a drafted player-controlled colonist. The pawn must already be drafted. Coordinates are current-map RimWorld x/z cells.",
+        "description": "Issue a normal RimWorld tactical move order to a drafted player-controlled colonist. Prefer for combat or genuine immediate danger, not routine environmental management. The pawn must already be drafted. Coordinates are current-map RimWorld x/z cells.",
         "strict": True,
         "parameters": {
             "type": "object",

@@ -245,6 +245,7 @@ class DecisionHandoffTests(unittest.TestCase):
             "baseline": store._baseline_path(),
             "handoff": store._handoff_path(),
             "memory": store._memory_path(),
+            "risk": store._risk_path(),
         }
         before = {name: path.read_bytes() for name, path in paths.items()}
 

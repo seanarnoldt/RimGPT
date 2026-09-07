@@ -129,7 +129,7 @@ CAPABILITY_SPECS = (
     ),
     CapabilitySpec(
         "combat",
-        "Draft, undraft, move drafted colonists, and designate visible animals for hunting.",
+        "High-cost tactical controls for combat or genuine immediate danger, plus visible-animal hunting. Do not enable solely for mild non-combat exposure.",
         (
             ("draft", "command:draft"),
             ("undraft", "command:undraft"),
