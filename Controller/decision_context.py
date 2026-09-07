@@ -13,6 +13,7 @@ from progress_tracking import build_progress_signals, build_stall_context
 from risk_tracking import build_operational_risk_summary
 from state_diff import StateDiff
 from state_store import StateStore, snapshot_version
+from strategic_projects import build_project_context
 
 
 CONTEXT_VERSION = 1
@@ -48,6 +49,9 @@ class DecisionContextBuilder:
         operational_risk = build_operational_risk_summary(
             self.state_store.get_decision_baseline(), state, self.state_store.get_risk_metadata()
         )
+        strategic_projects = build_project_context(
+            previous_decision, progress, self.state_store.get_stall_metadata(), state, operational_risk
+        )
         context: dict[str, Any] = {
             "contextVersion": CONTEXT_VERSION,
             "bootstrap": bool(delta.get("bootstrapRequired")),
@@ -56,6 +60,7 @@ class DecisionContextBuilder:
             "changesSinceLastDecision": delta,
             "progressSinceLastDecision": progress,
             "operationalRisk": operational_risk,
+            "strategicProjects": strategic_projects,
             "trigger": build_context_trigger(trigger, state, delta),
         }
         if previous_decision is not None:
@@ -103,15 +108,24 @@ class DecisionContextBuilder:
         current = self.state_store.get_current_state()
         if not isinstance(current, dict):
             raise DecisionContextError("No authoritative state is available after the tool round")
+        progress = build_progress_signals(before_state, current)
+        operational_risk = build_operational_risk_summary(
+            before_state, current, self.state_store.get_risk_metadata()
+        )
         result: dict[str, Any] = {
             "contextVersion": CONTEXT_VERSION,
             "postToolState": True,
             "authoritative": not stale,
             "currentSummary": build_current_summary(current),
             "changesSinceToolRound": StateDiff.compare(before_state, current),
-            "progressSinceToolRound": build_progress_signals(before_state, current),
-            "operationalRisk": build_operational_risk_summary(
-                before_state, current, self.state_store.get_risk_metadata()
+            "progressSinceToolRound": progress,
+            "operationalRisk": operational_risk,
+            "strategicProjects": build_project_context(
+                self.state_store.get_decision_handoff(),
+                progress,
+                self.state_store.get_stall_metadata(),
+                current,
+                operational_risk,
             ),
         }
         if note:

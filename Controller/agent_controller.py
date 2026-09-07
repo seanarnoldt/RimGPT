@@ -72,13 +72,17 @@ progressSinceLastDecision contains deterministic evidence that prior actions adv
 
 strategicMemory records prior plans and decisions; it is not current authoritative state. Live state always overrides memory.
 
-previousDecision is a short-lived execution handoff, not authoritative state or conversation history. Use current authoritative state to evaluate its open loops. Never assume an unresolved item still needs execution if current state shows it is complete or obsolete; resolve it explicitly instead.
+previousDecision is a short-lived execution handoff, not authoritative state or conversation history. Use current authoritative state to evaluate its open loops and projects. Never assume an unresolved item still needs execution if current state shows it is complete or obsolete; resolve it explicitly instead.
+
+strategicProjects is compact controller-derived project status. It identifies completed, active, background, available, waiting, blocked, and stalled tasks plus work-continuity signals. Projects are bounded 1-3 in-game-day work packages, not full-game plans. State remains authoritative.
 
 stallRecovery is bounded controller guidance, not a transcript. If it marks a repeated action or failed verification strategy as stalled, do not repeat that strategy unchanged. Use a narrower verification tool, change the prerequisite, or explicitly preserve the blocker while retaining the parent objective.
 
-Unresolved committed actions from the previous decision are priorities. Before merely restating the same need, either execute it, make concrete progress, explicitly defer or block it, or resolve it from current state. Every prior loop must be retained in finish_decision or explicitly resolved as completed, cancelled, or invalidated.
+Unresolved committed actions from the previous decision are priorities. Before merely restating the same need, either execute it, make concrete progress, explicitly defer or block it, or resolve it from current state. Every prior loop and project must be retained in finish_decision or explicitly resolved as completed, cancelled, or invalidated. Retain prior project tasks by ID and update them in place; completed tasks remain completed.
 
-Make meaningful progress, but do not try to solve the entire colony in one decision cycle. Use open loops to carry unfinished work into later cycles. decisionBudget.requestsRemaining includes the response you are currently producing. When that budget is low, stop discovery and finalize. Prefer acting on validated information over repeatedly gathering more information. finish_decision is the required normal terminal action.
+Make meaningful progress, but do not try to solve the entire colony in one decision cycle. Use open loops for narrow prerequisites and strategic projects for coherent 1-3 day development packages. When the colony is stable, create enough independent, validated, useful work to keep available colonists productive in parallel. Queue compatible actions together, but avoid huge speculative blueprint batches or conflicting work. decisionBudget.requestsRemaining includes the response you are currently producing. When that budget is low, stop discovery and finalize. Prefer acting on validated information over repeatedly gathering more information. finish_decision is the required normal terminal action.
+
+Research advancing normally, crops growing, valid construction underway, and ordinary sleep are background progress. Do not spend an entire decision cycle waiting on them when independent productive work is available. Avoid sequential verification between unrelated tasks. Treat blocked, stalled, newly unblocked, materially changed, or risk-escalated work as attention items.
 
 If exact current information is needed, call get_colony_state for only the relevant section or use an existing targeted read tool. For room, enclosure, roof, or room-temperature questions use inspect_room_at. Use inspect_map only for actual spatial placement and planning. Do not query every state section reflexively. Start with the summary, delta, and progress signals, then retrieve only details whose uncertainty matters to this decision. A repeated unchanged colony-state section returns a compact reuse marker; rely on the earlier result unless a write or fresh state change makes a reread necessary.
 
@@ -116,13 +120,15 @@ Blueprint placement only creates normal construction blueprints; colonists still
 
 Terrain support matters for buildings. Use inspect_map terrain affordances and build option requiredTerrainAffordance before placing blueprints.
 
-Player-visible alerts, letters, and recent events in currentSummary.awareness are authoritative gameplay warnings. Treat high-severity warnings such as an ancient danger as strategic constraints; never infer or expose contents that remain hidden.
+Player-visible alerts, letters, and recent events in currentSummary.awareness are authoritative gameplay warnings and planning inputs, not proof that a strategic project is complete. Treat high-severity warnings such as an ancient danger as strategic constraints; never infer or expose contents that remain hidden.
+
+Judge project completion only against its persisted success criteria and current authoritative state. Alert disappearance alone is insufficient. A single token action, such as one barricade, is progress toward a broader defense project rather than adequate defenses unless all stated criteria are actually satisfied.
 
 For temperature-sensitive shelter, physical blueprint validity is not enough. Use inspect_room_at at an interior cell to verify that the occupied space is enclosed, indoors, substantially roofed, and uses room temperature before relying on a cooler, heater, bed, or workstation there.
 
 When a strategic goal is blocked, convert the blocker into an executable prerequisite using available tools, then preserve the parent goal as an open loop. For example, obtain visible resources, enable capable labor, or place a required generic work facility before expecting the parent work to proceed. Do not merely restate a known blocker across cycles.
 
-When a prerequisite succeeds, verify it with the narrowest relevant read tool, then advance or resolve its open loop. If the same verification fails repeatedly or authoritative progress remains unchanged, stop repeating it and record the blocker or choose another prerequisite.
+When a prerequisite succeeds, verify it with the narrowest relevant read tool, then advance or resolve its open loop or dependent project task. If one project branch fails or stalls, replan that branch while preserving healthy unrelated tasks. If the same verification fails repeatedly or authoritative progress remains unchanged, stop repeating it and record the blocker or choose another prerequisite.
 
 Use currentSummary.labor to notice capable idle colonists, pending work, and obvious work blockers. If colonists are idle while a goal is blocked on obtainable visible resources or an available prerequisite, prefer a concrete enabling action over passive waiting.
 
@@ -297,7 +303,7 @@ class AgentController:
                 self.pending_decision_handoff = fallback_handoff(
                     self.state_store.get_decision_handoff(), assessment
                 )
-                print("[HANDOFF] No structured finish_decision supplied; retained prior open loops")
+                print("[HANDOFF] No structured finish_decision supplied; retained prior open loops and projects")
             except DecisionHandoffError as exc:
                 self.termination_reason = f"could not prepare fallback decision handoff: {exc}"
                 print(f"[ERROR] Decision cycle terminated: {self.termination_reason}")
@@ -1039,7 +1045,8 @@ class AgentController:
                 resolved_ids = sorted(item for item in previous_ids - current_ids if item)
                 print(
                     f"[HANDOFF] finish_decision accepted chars={handoff_chars(result)} "
-                    f"openLoops={len(result['openLoops'])} resolved={','.join(resolved_ids) or 'none'}"
+                    f"openLoops={len(result['openLoops'])} projects={len(result['projects'])} "
+                    f"resolved={','.join(resolved_ids) or 'none'}"
                 )
             elif name == "list_capabilities":
                 active = self._get_active_tools()

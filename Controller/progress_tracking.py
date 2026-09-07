@@ -12,6 +12,7 @@ from typing import Any
 STALL_SCHEMA_VERSION = 1
 MAX_PROGRESS_SIGNALS = 24
 MAX_STALL_LOOPS = 6
+MAX_STALL_PROJECT_TASKS = 24
 MAX_VERIFICATION_STRATEGIES = 8
 MAX_STALL_CONTEXT_CHARS = 4_000
 VERIFICATION_TOOLS = {"inspect_room_at", "inspect_map", "get_colony_state"}
@@ -47,6 +48,7 @@ def empty_stall_metadata(identity: dict[str, Any]) -> dict[str, Any]:
         "schemaVersion": STALL_SCHEMA_VERSION,
         "identity": copy.deepcopy(identity),
         "loops": [],
+        "projectTasks": [],
         "failedVerificationStrategies": [],
     }
 
@@ -91,10 +93,27 @@ def validate_stall_metadata(value: Any, identity: dict[str, Any]) -> dict[str, A
             "strategy": strategy,
             "consecutiveFailures": bounded_int(raw.get("consecutiveFailures"), 1, 99),
         })
+    project_tasks = []
+    seen_tasks: set[str] = set()
+    for raw in value.get("projectTasks", []):
+        if not isinstance(raw, dict) or len(project_tasks) >= MAX_STALL_PROJECT_TASKS:
+            continue
+        task_id = short_text(raw.get("id"), 32)
+        fingerprint = short_text(raw.get("fingerprint"), 24)
+        if not task_id.startswith("T-") or not fingerprint or task_id in seen_tasks:
+            continue
+        seen_tasks.add(task_id)
+        project_tasks.append({
+            "id": task_id,
+            "fingerprint": fingerprint,
+            "repeatedCycles": bounded_int(raw.get("repeatedCycles"), 1, 99),
+            "noRelevantProgressCycles": bounded_int(raw.get("noRelevantProgressCycles"), 0, 99),
+        })
     return {
         "schemaVersion": STALL_SCHEMA_VERSION,
         "identity": copy.deepcopy(identity),
         "loops": loops,
+        "projectTasks": project_tasks,
         "failedVerificationStrategies": strategies,
     }
 
@@ -134,7 +153,49 @@ def update_open_loop_stalls(
             "noRelevantProgressCycles": no_progress,
         })
     result["loops"] = loops
+    result["projectTasks"] = update_project_task_stalls(
+        result.get("projectTasks"), previous_handoff, next_handoff, progress
+    )
     return result
+
+
+def update_project_task_stalls(
+    prior_values: Any,
+    previous_handoff: dict[str, Any] | None,
+    next_handoff: dict[str, Any],
+    progress: dict[str, Any],
+) -> list[dict[str, Any]]:
+    prior = {
+        str(item.get("id")): item
+        for item in prior_values or []
+        if isinstance(item, dict) and item.get("id")
+    }
+    previous = project_tasks_by_id(previous_handoff)
+    current = project_tasks_by_id(next_handoff)
+    progress_categories = set(str(item) for item in progress.get("categories", []))
+    result = []
+    for task_id in sorted(current):
+        task = current[task_id]
+        if task.get("status") == "completed":
+            continue
+        fingerprint = project_task_fingerprint(task)
+        old_task = previous.get(task_id)
+        old_state = prior.get(task_id, {})
+        same = old_task is not None and project_task_fingerprint(old_task) == fingerprint
+        relevant = bool(project_task_categories(task) & progress_categories)
+        repeated = bounded_int(old_state.get("repeatedCycles"), 1, 98) + 1 if same else 1
+        no_progress = (
+            bounded_int(old_state.get("noRelevantProgressCycles"), 0, 98) + 1
+            if same and not relevant
+            else 0
+        )
+        result.append({
+            "id": task_id,
+            "fingerprint": fingerprint,
+            "repeatedCycles": repeated,
+            "noRelevantProgressCycles": no_progress,
+        })
+    return result[:MAX_STALL_PROJECT_TASKS]
 
 
 def record_verification_outcome(
@@ -341,6 +402,35 @@ def loop_categories(loop: dict[str, Any]) -> set[str]:
         if any(keyword in text for keyword in keywords):
             categories.add(category)
     return categories
+
+
+def project_tasks_by_id(handoff: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    result = {}
+    for project in (handoff or {}).get("projects", []):
+        if not isinstance(project, dict):
+            continue
+        for task in project.get("tasks", []):
+            if isinstance(task, dict) and task.get("id"):
+                result[str(task["id"])] = task
+    return result
+
+
+def project_task_fingerprint(task: dict[str, Any]) -> str:
+    value = {
+        "objective": short_text(task.get("objective"), 160),
+        "status": task.get("status"),
+        "mode": task.get("mode"),
+        "dependsOn": sorted(str(item) for item in task.get("dependsOn", [])),
+        "blockers": sorted(short_text(item, 120) for item in task.get("blockers", [])),
+    }
+    return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()[:16]
+
+
+def project_task_categories(task: dict[str, Any]) -> set[str]:
+    return loop_categories({
+        "objective": task.get("objective"),
+        "nextAction": " ".join(str(item) for item in task.get("blockers", [])),
+    })
 
 
 def verification_strategy(tool: str, arguments: dict[str, Any]) -> str:

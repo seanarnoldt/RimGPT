@@ -5,7 +5,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "name": "finish_decision",
-        "description": "Finish this top-level decision with a compact assessment and continuity handoff. Call this alone when done. Retain or explicitly resolve every prior open loop. This local terminal tool does not change RimWorld and requires no later prose response.",
+        "description": "Finish this top-level decision with a compact assessment and continuity handoff. Call this alone when done. Retain or explicitly resolve every prior open loop and project. Project completion requires every persisted success criterion confirmed by authoritative state. This local terminal tool does not change RimWorld and requires no later prose response.",
         "strict": True,
         "parameters": {
             "type": "object",
@@ -39,8 +39,75 @@ TOOLS: list[dict[str, Any]] = [
                         "additionalProperties": False,
                     },
                 },
+                "projects": {
+                    "type": "array",
+                    "maxItems": 3,
+                    "description": "Active 1-3 day strategic projects. Retain prior projects/tasks by ID and update them in place.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": ["string", "null"], "description": "Prior project ID, or null for a new project."},
+                            "objective": {"type": "string", "maxLength": 160},
+                            "rationale": {"type": "string", "maxLength": 220},
+                            "status": {"type": "string", "enum": ["active", "background", "blocked"]},
+                            "success_criteria": {
+                                "type": "array", "minItems": 1, "maxItems": 4,
+                                "items": {"type": "string", "maxLength": 140},
+                                "description": "Meaningful authoritative criteria; alerts or one token action are not sufficient by themselves.",
+                            },
+                            "blockers": {
+                                "type": "array", "maxItems": 4,
+                                "items": {"type": "string", "maxLength": 220},
+                            },
+                            "tasks": {
+                                "type": "array", "minItems": 1, "maxItems": 8,
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {"type": ["string", "null"], "description": "Prior task ID, or null for a new task."},
+                                        "key": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$", "description": "Stable project-local key; new task dependencies may reference this key."},
+                                        "objective": {"type": "string", "maxLength": 160},
+                                        "status": {"type": "string", "enum": ["pending", "active", "background", "blocked", "completed"]},
+                                        "mode": {"type": "string", "enum": ["active", "background"]},
+                                        "depends_on": {
+                                            "type": "array", "maxItems": 4,
+                                            "items": {"type": "string"},
+                                            "description": "Task IDs, or project-local keys for tasks created in this same handoff.",
+                                        },
+                                        "blockers": {
+                                            "type": "array", "maxItems": 3,
+                                            "items": {"type": "string", "maxLength": 220},
+                                        },
+                                    },
+                                    "required": ["id", "key", "objective", "status", "mode", "depends_on", "blockers"],
+                                    "additionalProperties": False,
+                                },
+                            },
+                        },
+                        "required": ["id", "objective", "rationale", "status", "success_criteria", "blockers", "tasks"],
+                        "additionalProperties": False,
+                    },
+                },
+                "resolved_projects": {
+                    "type": "array", "maxItems": 3,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "string"},
+                            "resolution": {"type": "string", "enum": ["completed", "cancelled", "invalidated"]},
+                            "reason": {"type": "string", "maxLength": 220},
+                            "criteria_met": {
+                                "type": "array", "maxItems": 4,
+                                "items": {"type": "string", "maxLength": 140},
+                                "description": "For completed projects, repeat every persisted success criterion confirmed by authoritative state.",
+                            },
+                        },
+                        "required": ["id", "resolution", "reason", "criteria_met"],
+                        "additionalProperties": False,
+                    },
+                },
             },
-            "required": ["assessment", "open_loops", "resolved_loops"],
+            "required": ["assessment", "open_loops", "resolved_loops", "projects", "resolved_projects"],
             "additionalProperties": False,
         },
     },

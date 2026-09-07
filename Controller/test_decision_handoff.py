@@ -187,7 +187,7 @@ class DecisionHandoffTests(unittest.TestCase):
         schemas = ActiveToolSet(DEFAULT_TOOL_REGISTRY).schemas()
         self.assertEqual(len(schemas), 7)
         self.assertEqual(schemas[0]["name"], "finish_decision")
-        self.assertLess(serialized_chars(schemas), 4_000)
+        self.assertLess(serialized_chars(schemas), 7_000)
 
     def test_terminal_tool_is_local_and_uses_no_additional_response(self):
         state = base_state(version=20)
