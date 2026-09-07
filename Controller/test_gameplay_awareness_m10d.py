@@ -154,8 +154,8 @@ class GameplayAwarenessM10DTests(unittest.TestCase):
         self.assertIn("convert the blocker into an executable prerequisite", SYSTEM_INSTRUCTIONS)
         self.assertIn("preserve the parent goal as an open loop", SYSTEM_INSTRUCTIONS)
         self.assertIn("temperature-sensitive shelter", SYSTEM_INSTRUCTIONS)
-        self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m10g")
-        self.assertEqual(build_prompt_cache_key("gpt-5.6"), "rimgpt:context-memory-v1-m10g:gpt-5.6")
+        self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m10h1")
+        self.assertEqual(build_prompt_cache_key("gpt-5.6"), "rimgpt:context-memory-v1-m10h1:gpt-5.6")
 
 
 if __name__ == "__main__":

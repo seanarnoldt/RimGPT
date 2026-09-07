@@ -182,6 +182,20 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "type": "function",
+        "name": "diagnose_construction",
+        "description": "Diagnose why one known visible player blueprint or frame is not progressing. Prefer this focused read for stalled pending construction before broad state or map reads. Reports materials and Construction labor; it does not choose a remedy.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "thing_id": {"type": "string", "description": "Stable ThingID of a visible player blueprint or frame."},
+            },
+            "required": ["thing_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
         "name": "inspect_map",
         "description": "Read-only spatial planning inspection of a bounded current-map RimWorld x/z rectangle. Use inspect_room_at, not this tool, for enclosure or room-status verification. Bounds are inclusive, so max_x-min_x+1 and max_z-min_z+1 must each be at most 40. Prefer focused 15x15 to 20x20 planning regions. Hidden/fogged contents are not exposed.",
         "strict": True,

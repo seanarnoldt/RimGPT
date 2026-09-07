@@ -15,7 +15,8 @@ CATALOG_TOOLS = {"list_build_options", "get_build_info", "list_growable_plants",
 CAPABILITY_TOOLS = {"list_capabilities", "enable_capability"}
 TERMINAL_TOOLS = {"finish_decision"}
 READ_TOOLS = CATALOG_TOOLS | CAPABILITY_TOOLS | {
-    "get_colony_state", "inspect_room_at", "inspect_map", "check_build_placements", "check_zone_placement", "finish_decision"
+    "get_colony_state", "inspect_room_at", "diagnose_construction", "inspect_map",
+    "check_build_placements", "check_zone_placement", "finish_decision"
 }
 
 
@@ -131,6 +132,8 @@ class ModelToolResultFormatter:
             return {"success": True, **drop_nulls(copy.deepcopy(result))}
         if tool_name == "inspect_room_at":
             return compact_room_at(result)
+        if tool_name == "diagnose_construction":
+            return compact_construction_diagnostic(result)
         if tool_name == "inspect_map":
             return compact_inspect_map(result)
         if tool_name == "check_build_placements":
@@ -254,6 +257,27 @@ def compact_room_at(raw: dict[str, Any]) -> dict[str, Any]:
         },
     }
     return drop_nulls(result)
+
+
+def compact_construction_diagnostic(raw: dict[str, Any]) -> dict[str, Any]:
+    target = raw.get("target") if isinstance(raw.get("target"), dict) else None
+    labor = raw.get("labor") if isinstance(raw.get("labor"), dict) else None
+    requirements = [
+        drop_nulls(select_fields(item, (
+            "defName", "label", "required", "remaining", "delivered", "available", "forbidden", "missing"
+        )))
+        for item in dict_list(raw.get("requirements"))
+    ]
+    return drop_nulls({
+        "success": True,
+        "gameLoaded": raw.get("gameLoaded"),
+        "targetAvailable": raw.get("targetAvailable"),
+        "target": select_fields(target, ("id", "stage", "defName", "label", "position", "stuffDef")) if target else None,
+        "requirements": requirements,
+        "labor": select_fields(labor, ("capable", "enabled", "idleEnabled")) if labor else None,
+        "blockers": copy.deepcopy(raw.get("blockers")),
+        "primaryBlocker": raw.get("primaryBlocker") or "unknown",
+    })
 
 
 class RoomReferenceEncoder:

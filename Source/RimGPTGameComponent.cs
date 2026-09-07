@@ -82,6 +82,9 @@ namespace RimGPT
                         case RimGPTReadRequestType.RoomAt:
                             json = RimGPTSpatialJson.BuildRoomAtJson(request.MinX, request.MinZ);
                             break;
+                        case RimGPTReadRequestType.ConstructionDiagnostic:
+                            json = RimGPTConstructionDiagnosticJson.Build(request.ThingId);
+                            break;
                         case RimGPTReadRequestType.BuildOptions:
                             json = RimGPTCatalogJson.BuildBuildOptionsJson(request.Category, request.Search);
                             break;

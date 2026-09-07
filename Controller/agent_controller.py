@@ -86,6 +86,8 @@ Research advancing normally, crops growing, valid construction underway, and ord
 
 If exact current information is needed, call get_colony_state for only the relevant section or use an existing targeted read tool. For room, enclosure, roof, or room-temperature questions use inspect_room_at. Use inspect_map only for actual spatial placement and planning. Do not query every state section reflexively. Start with the summary, delta, and progress signals, then retrieve only details whose uncertainty matters to this decision. A repeated unchanged colony-state section returns a compact reuse marker; rely on the earlier result unless a write or fresh state change makes a reread necessary.
 
+When a known player blueprint or frame is stalled, or pending construction has no relevant progress, use diagnose_construction on its ThingID before broad work/building reads or repeated map inspection. Treat the diagnosis as the blocker, then choose the strategic remedy yourself.
+
 Do not treat every negative health or environmental condition as an emergency. Triage risk as routine/monitor, concerning, urgent, or critical using authoritative severity, trend, persistence, current environment, safer recovery access, pawn vulnerability, and disruption cost. Minor, stable, reversible conditions should usually be monitored while productive work continues. Escalate when severity or trend meaningfully worsens; de-escalate after recovery, and do not immediately reopen a recently resolved minor emergency without meaningful worsening.
 
 Drafting and drafted movement are high-cost tactical interventions. Prefer them for combat or genuine immediate danger. Do not enable combat controls or draft a pawn solely for mild non-combat heat or cold exposure. For non-combat risk, prefer normal work, scheduling, or allowed-area controls when feasible. When intervention is necessary, use the least disruptive effective response and return the colony to productive work promptly. Keep parent strategic objectives active while minor operational risks are monitored.
@@ -1079,6 +1081,8 @@ class AgentController:
                     }
             elif name == "inspect_room_at":
                 result = self.bridge.inspect_room_at(arguments["x"], arguments["z"])
+            elif name == "diagnose_construction":
+                result = self.bridge.diagnose_construction(arguments["thing_id"])
             elif name == "list_build_options":
                 result = self.bridge.list_build_options(arguments.get("category"), arguments.get("search"))
             elif name == "get_build_info":

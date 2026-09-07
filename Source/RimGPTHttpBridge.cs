@@ -152,6 +152,12 @@ namespace RimGPT
                     return;
                 }
 
+                if (method == "GET" && path == "/construction/diagnose")
+                {
+                    HandleConstructionDiagnostic(context);
+                    return;
+                }
+
                 if (method == "GET" && path == "/build/options")
                 {
                     HandleBuildOptions(context);
@@ -334,6 +340,25 @@ namespace RimGPT
                 Type = RimGPTReadRequestType.RoomAt,
                 MinX = x,
                 MinZ = z
+            };
+            int statusCode;
+            string json = RimGPTReadRequestQueue.EnqueueAndWait(request, out statusCode);
+            WriteJson(context.Response, statusCode, json);
+        }
+
+        private static void HandleConstructionDiagnostic(HttpListenerContext context)
+        {
+            string thingId = context.Request.QueryString["thingId"];
+            if (string.IsNullOrEmpty(thingId) || thingId.Length > 128)
+            {
+                WriteJson(context.Response, 400, "{\"error\":\"missingOrInvalidThingId\"}");
+                return;
+            }
+
+            RimGPTReadRequest request = new RimGPTReadRequest
+            {
+                Type = RimGPTReadRequestType.ConstructionDiagnostic,
+                ThingId = thingId
             };
             int statusCode;
             string json = RimGPTReadRequestQueue.EnqueueAndWait(request, out statusCode);
