@@ -218,6 +218,7 @@ namespace RimGPT
         public string DefName;
         public string Label;
         public string Faction;
+        public string DangerReason;
         public RimGPTPositionState Position;
         public bool Downed;
         public RimGPTEquipmentState Weapon;

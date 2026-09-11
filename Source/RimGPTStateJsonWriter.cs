@@ -250,6 +250,7 @@ namespace RimGPT
                 WriteStringField(json, "defName", threat.DefName, true);
                 WriteStringField(json, "label", threat.Label, true);
                 WriteStringField(json, "faction", threat.Faction, true);
+                WriteStringField(json, "dangerReason", threat.DangerReason, true);
                 WritePositionField(json, "position", threat.Position, true);
                 WriteBoolField(json, "downed", threat.Downed, true);
                 WriteEquipmentField(json, "weapon", threat.Weapon, true);

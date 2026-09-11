@@ -648,7 +648,8 @@ namespace RimGPT
                 Pawn pawn = pawns[i];
                 try
                 {
-                    if (pawn == null || pawn.Dead || pawn.Faction == null || !pawn.HostileTo(Faction.OfPlayer) || pawn.Position.Fogged(map))
+                    if (pawn == null || pawn.Dead || pawn.Downed || !pawn.Spawned || pawn.Map != map
+                        || pawn.Position.Fogged(map) || !GenHostility.IsActiveThreatToPlayer(pawn, false))
                     {
                         continue;
                     }
@@ -659,6 +660,7 @@ namespace RimGPT
                     threat.DefName = pawn.def != null ? pawn.def.defName : null;
                     threat.Label = SafeLabel(pawn);
                     threat.Faction = pawn.Faction != null ? pawn.Faction.Name : null;
+                    threat.DangerReason = DangerReason(pawn);
                     threat.Position = BuildPosition(pawn.Position);
                     threat.Downed = pawn.Downed;
                     threat.Weapon = BuildPrimaryWeapon(pawn);
@@ -671,6 +673,24 @@ namespace RimGPT
             }
 
             return result;
+        }
+
+        private static string DangerReason(Pawn pawn)
+        {
+            MentalState mentalState = pawn.MentalState;
+            if (mentalState is MentalState_Manhunter)
+            {
+                return "manhunter";
+            }
+            if (pawn.Faction != null && pawn.Faction.HostileTo(Faction.OfPlayer))
+            {
+                return "hostileFaction";
+            }
+            if (mentalState != null && mentalState.ForceHostileTo(Faction.OfPlayer))
+            {
+                return "aggressiveMentalState";
+            }
+            return "activeHostility";
         }
 
         private static RimGPTEquipmentState BuildPrimaryWeapon(Pawn pawn)

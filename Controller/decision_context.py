@@ -221,7 +221,7 @@ def build_bootstrap_state(state: dict[str, Any]) -> dict[str, Any]:
     research = state.get("research") if isinstance(state.get("research"), dict) else {}
     available_research = [select_fields(item, ("defName", "label", "progress", "cost")) for item in dict_list(research.get("available"))[:16]]
     threats = [
-        select_fields(item, ("id", "type", "defName", "label", "faction", "position", "downed", "weapon"))
+        select_fields(item, ("id", "type", "defName", "label", "faction", "dangerReason", "position", "downed", "weapon"))
         for item in dict_list(state.get("threats"))[:30]
     ]
     return {

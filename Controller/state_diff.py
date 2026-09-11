@@ -194,7 +194,7 @@ class StateDiff:
         self._bounded_put(result, "resolved", [identity_summary(old[key]) for key in sorted(old.keys() - new.keys())])
         changed = []
         for thing_id in sorted(old.keys() & new.keys()):
-            delta = fields_diff(old[thing_id], new[thing_id], ("downed", "weapon"))
+            delta = fields_diff(old[thing_id], new[thing_id], ("dangerReason", "downed", "weapon"))
             self._put(delta, "position", position_change(old[thing_id].get("position"), new[thing_id].get("position"), 8))
             if delta:
                 changed.append(with_id(thing_id, delta))
@@ -807,7 +807,7 @@ def compact_colonist(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def compact_threat(item: dict[str, Any]) -> dict[str, Any]:
-    return without_empty(pick(item, ("id", "type", "defName", "label", "faction", "position", "downed", "weapon")))
+    return without_empty(pick(item, ("id", "type", "defName", "label", "faction", "dangerReason", "position", "downed", "weapon")))
 
 
 def compact_zone(item: dict[str, Any], cell_limit: int) -> dict[str, Any]:
@@ -1047,7 +1047,7 @@ def compact_critical_item(section: str, value: Any) -> Any:
     if not isinstance(value, dict):
         return compact_value(value, 4)
     if section == "threats":
-        summary = pick(value, ("id", "type", "defName", "label", "downed"))
+        summary = pick(value, ("id", "type", "defName", "label", "dangerReason", "downed"))
         for field in ("weapon", "position"):
             if field in value:
                 summary[field] = compact_value(value[field], 4)

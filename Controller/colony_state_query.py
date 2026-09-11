@@ -191,7 +191,7 @@ class ColonyStateQuery:
         return {"power": power, "fuel": fuel}, truncated or contains_truncation(power)
 
     def _threats(self, state: dict[str, Any]) -> tuple[Any, bool]:
-        threats = [select_fields(item, ("id", "type", "defName", "label", "faction", "position", "downed", "weapon")) for item in dict_list(state.get("threats"))]
+        threats = [select_fields(item, ("id", "type", "defName", "label", "faction", "dangerReason", "position", "downed", "weapon")) for item in dict_list(state.get("threats"))]
         return bounded_list(threats, self.max_entries)
 
     def _environment(self, state: dict[str, Any]) -> tuple[Any, bool]:
