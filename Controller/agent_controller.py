@@ -19,8 +19,9 @@ from context_telemetry import (
     measure_context,
     serialized_chars,
 )
-from decision_context import DecisionContextBuilder, DecisionContextError, build_current_summary, serialize_context
+from decision_context import DecisionContextBuilder, build_current_summary, serialize_context
 from decision_handoff import DecisionHandoffError, fallback_handoff, handoff_chars, prepare_handoff
+from decision_outcome import DecisionOutcome
 from dry_run_proposals import DryRunProposalLedger
 from model_tool_result import ModelToolResultFormatter
 from prompt_runtime import (
@@ -217,6 +218,7 @@ class AgentController:
         self.state_read_cache: dict[str, str] = {}
         self.carried_context_chars = 0
         self.cycle_cost = 0.0
+        self._cycle_cost_calculable = self.pricing.base_configured
         self.session_cost = 0.0
         self.compaction_count = 0
         self.previous_response_id: str | None = None
@@ -236,22 +238,27 @@ class AgentController:
                 "RIMGPT_CACHED_INPUT_COST_PER_MILLION."
             )
 
-    def run_once(self, trigger: dict[str, Any] | None = None) -> None:
+    def run_once(self, trigger: dict[str, Any] | None = None) -> DecisionOutcome:
         self._begin_cycle()
-        print("[STATE] Checking RimGPT bridge health")
-        health = self.bridge.health()
-        print(f"[STATE] Bridge health: {health.get('status')} ({health.get('bridge')})")
+        try:
+            print("[STATE] Checking RimGPT bridge health")
+            health = self.bridge.health()
+            print(f"[STATE] Bridge health: {health.get('status')} ({health.get('bridge')})")
 
-        state = self.bridge.get_state()
-        self.current_state = self._accept_authoritative_state(state)
-        print(f"[STATE] {summarize_state(state)}")
+            state = self.bridge.get_state()
+            self.current_state = self._accept_authoritative_state(state)
+            print(f"[STATE] {summarize_state(state)}")
+        except Exception as exc:
+            self.termination_reason = f"could not retrieve initial authoritative state: {exc}"
+            print(f"[ERROR] Decision cycle terminated: {self.termination_reason}")
+            return self._decision_outcome(success=False)
 
         try:
             decision_context = self._get_context_builder().build(trigger)
-        except DecisionContextError as exc:
+        except Exception as exc:
             self.termination_reason = str(exc)
             print(f"[ERROR] Decision cycle terminated: {exc}")
-            return
+            return self._decision_outcome(success=False)
 
         self._configure_initial_tools(decision_context)
         decision_context = self._decorate_cycle_context(decision_context)
@@ -278,9 +285,14 @@ class AgentController:
         except Exception as exc:
             self.termination_reason = str(exc)
             print(f"[ERROR] {exc}")
-            return
+            return self._decision_outcome(success=False)
 
-        final_response = self._handle_tool_rounds(response)
+        try:
+            final_response = self._handle_tool_rounds(response)
+        except Exception as exc:
+            self.termination_reason = f"tool-call loop failed: {exc}"
+            print(f"[ERROR] Decision cycle terminated: {self.termination_reason}")
+            return self._decision_outcome(success=False)
         assessment = (
             str(self.pending_decision_handoff.get("assessment") or "")
             if self.pending_decision_handoff is not None
@@ -320,9 +332,49 @@ class AgentController:
                 else:
                     assert self.pending_decision_handoff is not None
                     self.state_store.commit_successful_decision(final_state, self.pending_decision_handoff)
-            except (RimWorldBridgeError, StateStoreError) as exc:
+                return self._decision_outcome(success=True, final_state=final_state)
+            except Exception as exc:
                 self.termination_reason = f"could not confirm final authoritative state: {exc}"
                 print(f"[ERROR] Decision baseline not advanced: {exc}")
+
+        return self._decision_outcome(success=False)
+
+    def _decision_outcome(
+        self,
+        *,
+        success: bool,
+        final_state: dict[str, Any] | None = None,
+    ) -> DecisionOutcome:
+        state = final_state if final_state is not None else self.current_state
+        snapshot = state.get("snapshot") if isinstance(state, dict) else None
+        game = state.get("game") if isinstance(state, dict) else None
+        version = snapshot.get("version") if isinstance(snapshot, dict) else None
+        ticks = snapshot.get("ticksGame") if isinstance(snapshot, dict) else None
+        if not isinstance(ticks, int) or isinstance(ticks, bool):
+            ticks = game.get("ticksGame") if isinstance(game, dict) else None
+        cost = self.cycle_cost if getattr(self, "_cycle_cost_calculable", False) else None
+        return DecisionOutcome(
+            success=success,
+            termination_reason=None if success else (self.termination_reason or "decision cycle did not complete"),
+            final_snapshot_version=version if isinstance(version, int) and not isinstance(version, bool) else None,
+            final_ticks_game=ticks if isinstance(ticks, int) and not isinstance(ticks, bool) else None,
+            colony_lineage_id=(
+                game.get("colonyLineageId")
+                if isinstance(game, dict) and isinstance(game.get("colonyLineageId"), str)
+                else None
+            ),
+            current_map_id=(
+                game.get("currentMapId")
+                if isinstance(game, dict) and isinstance(game.get("currentMapId"), str)
+                else None
+            ),
+            handoff=self.pending_decision_handoff,
+            model_requests=self.model_request_count,
+            write_commands=self.write_commands,
+            uncertain_commands_remained=bool(self.uncertain_commands),
+            cycle_cost=cost,
+            dry_run=self.dry_run,
+        )
 
     def _handle_tool_rounds(self, response: Any) -> Any:
         self._ensure_safety_state()
@@ -619,6 +671,7 @@ class AgentController:
         self._get_active_tools()
 
     def _begin_cycle(self) -> None:
+        self.current_state = None
         self.total_tool_calls = 0
         self.write_commands = 0
         self.failed_call_counts = {}
@@ -630,6 +683,8 @@ class AgentController:
         self.state_read_cache = {}
         self.carried_context_chars = 0
         self.cycle_cost = 0.0
+        pricing = getattr(self, "pricing", None)
+        self._cycle_cost_calculable = bool(pricing is not None and pricing.base_configured)
         self.compaction_count = 0
         self.previous_response_id = None
         self.pending_decision_handoff = None
@@ -914,8 +969,8 @@ class AgentController:
             request["tool_choice"] = {"type": "function", "name": "finish_decision"}
         if previous_response_id:
             request["previous_response_id"] = previous_response_id
-        response = self.client.responses.create(**request)
         self.model_request_count = request_number
+        response = self.client.responses.create(**request)
         self._last_presented_tool_names = {str(schema.get("name")) for schema in active_tools}
         self.previous_response_id = getattr(response, "id", None)
         # A continuation references prior Responses output server-side. Track
@@ -1003,6 +1058,8 @@ class AgentController:
         if usage.estimated_cost is not None:
             self.cycle_cost += usage.estimated_cost
             self.session_cost += usage.estimated_cost
+        else:
+            self._cycle_cost_calculable = False
         print(
             "[COST] "
             f"request={request_number} kind={kind} model={self.model} "
