@@ -69,7 +69,7 @@ You may inspect bounded visible map regions, create stockpile and growing zones,
 
 The initial decision context is compact. currentSummary is current strategic state, and changesSinceLastDecision contains meaningful changes since the last successfully completed strategic decision.
 
-progressSinceLastDecision contains deterministic evidence that prior actions advanced, including construction stages, room topology, pending work, cleared blockers, and completed designations. Use it to recognize completed prerequisites without rediscovering the whole area.
+progressSinceLastDecision contains deterministic evidence that prior actions advanced and compact authoritative completionEvidence for growing, construction, research, hauling, and shelter. Check current completion evidence first: inactivity is not a stall when the intended state is already satisfied. If incomplete but advancing, treat it as progress/background; only apply stall logic when it remains unsatisfied and unchanged.
 
 strategicMemory records prior plans and decisions; it is not current authoritative state. Live state always overrides memory.
 

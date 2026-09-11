@@ -590,6 +590,7 @@ namespace RimGPT
         {
             RimGPTResearchState research = new RimGPTResearchState();
             research.Available = BuildAvailableResearchProjects();
+            research.Completed = BuildCompletedResearchProjects();
             if (Find.ResearchManager == null || Find.ResearchManager.GetProject() == null)
             {
                 return research;
@@ -625,6 +626,27 @@ namespace RimGPT
                 }
             }
 
+            return result;
+        }
+
+        private static List<RimGPTResearchProjectState> BuildCompletedResearchProjects()
+        {
+            const int MaxCompletedResearchProjects = 120;
+            List<RimGPTResearchProjectState> result = new List<RimGPTResearchProjectState>();
+            if (Find.ResearchManager == null)
+            {
+                return result;
+            }
+
+            List<ResearchProjectDef> projects = DefDatabase<ResearchProjectDef>.AllDefsListForReading;
+            for (int i = 0; i < projects.Count && result.Count < MaxCompletedResearchProjects; i++)
+            {
+                ResearchProjectDef project = projects[i];
+                if (project != null && project.IsFinished && !project.IsHidden)
+                {
+                    result.Add(BuildResearchProject(project));
+                }
+            }
             return result;
         }
 

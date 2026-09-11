@@ -154,7 +154,7 @@ namespace RimGPT
                     json.Append(",");
                 }
 
-                WriteBed(json, bed);
+                WriteBed(json, bed, map);
                 written++;
             }
             json.Append("]");
@@ -333,13 +333,14 @@ namespace RimGPT
             json.Append("}");
         }
 
-        private static void WriteBed(StringBuilder json, Building_Bed bed)
+        private static void WriteBed(StringBuilder json, Building_Bed bed, Map map)
         {
             json.Append("{");
             WriteThingIdentity(json, bed, false);
             WritePosition(json, "position", bed.Position, true);
             WriteBool(json, "medical", bed.Medical, true);
             WriteBool(json, "forPrisoners", bed.ForPrisoners, true);
+            RimGPTSpatialJson.WriteRoom(json, "room", RegionAndRoomQuery.GetRoom(bed), map, true);
             WriteName(json, "owners", true);
             json.Append("[");
             List<Pawn> owners = bed.OwnersForReading;

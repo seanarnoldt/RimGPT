@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 from collections import Counter
 from typing import Any
 
@@ -19,8 +20,14 @@ VERIFICATION_TOOLS = {"inspect_room_at", "inspect_map", "get_colony_state"}
 
 
 def build_progress_signals(baseline: Any, current: Any) -> dict[str, Any]:
+    completion = build_completion_evidence(current)
     if not compatible_snapshots(baseline, current):
-        return {"relevantStateChanged": False, "categories": [], "signals": []}
+        return {
+            "relevantStateChanged": False,
+            "categories": [],
+            "signals": [],
+            "completionEvidence": completion,
+        }
 
     signals: list[dict[str, Any]] = []
     before_buildings = index_by_id(baseline.get("buildings"))
@@ -29,6 +36,8 @@ def build_progress_signals(baseline: Any, current: Any) -> dict[str, Any]:
     append_construction_counts(signals, before_buildings, after_buildings)
     append_room_transitions(signals, before_buildings, after_buildings)
     append_labor_progress(signals, baseline, current)
+    append_growing_progress(signals, baseline, current)
+    append_research_progress(signals, baseline, current)
 
     total = len(signals)
     bounded = signals[:MAX_PROGRESS_SIGNALS]
@@ -36,6 +45,7 @@ def build_progress_signals(baseline: Any, current: Any) -> dict[str, Any]:
         "relevantStateChanged": bool(signals),
         "categories": sorted({str(item["category"]) for item in signals}),
         "signals": bounded,
+        "completionEvidence": completion,
     }
     if total > len(bounded):
         result["signalCount"] = total
@@ -141,9 +151,10 @@ def update_open_loop_stalls(
         if same_action:
             repeated = bounded_int(prior.get("repeatedNextActionCycles"), 1, 98) + 1
         relevant = bool(loop_categories(item) & progress_categories)
+        satisfied = bool(authoritative_completion_for(item, progress))
         no_progress = (
             bounded_int(prior.get("noRelevantProgressCycles"), 0, 98) + 1
-            if same_action and not relevant
+            if same_action and not relevant and not satisfied
             else 0
         )
         loops.append({
@@ -183,10 +194,11 @@ def update_project_task_stalls(
         old_state = prior.get(task_id, {})
         same = old_task is not None and project_task_fingerprint(old_task) == fingerprint
         relevant = bool(project_task_categories(task) & progress_categories)
+        satisfied = bool(authoritative_completion_for(task, progress))
         repeated = bounded_int(old_state.get("repeatedCycles"), 1, 98) + 1 if same else 1
         no_progress = (
             bounded_int(old_state.get("noRelevantProgressCycles"), 0, 98) + 1
-            if same and not relevant
+            if same and not relevant and not satisfied
             else 0
         )
         result.append({
@@ -251,18 +263,22 @@ def build_stall_context(
         })[:6]
         repeated = bounded_int(stored.get("repeatedNextActionCycles"), 1, 99)
         no_progress = bounded_int(stored.get("noRelevantProgressCycles"), 0, 99)
+        completion_evidence = authoritative_completion_for(loop, progress)
         entry = {
             "id": loop.get("id"),
             "repeatedNextActionCycles": repeated,
             "noRelevantProgressCycles": no_progress,
             "progressSinceBaseline": relevant_types,
-            "stalled": repeated >= 2 and no_progress >= 1 and not relevant_types,
+            "stalled": repeated >= 2 and no_progress >= 1 and not relevant_types and not completion_evidence,
         }
-        if relevant_types:
+        if completion_evidence:
+            entry["authoritativeCompletionEvidence"] = completion_evidence
+            entry["guidance"] = "Authoritative state indicates this phase may be satisfied; advance or resolve it instead of treating inactivity as a stall."
+        elif relevant_types:
             entry["guidance"] = "Verify cheaply, then advance or resolve this prerequisite/open loop."
         elif entry["stalled"]:
             entry["guidance"] = "Do not repeat the same action unchanged; narrow verification, change prerequisite, or record the blocker."
-        if relevant_types or repeated >= 2 or no_progress >= 1:
+        if completion_evidence or relevant_types or repeated >= 2 or no_progress >= 1:
             loops.append(entry)
 
     result = {
@@ -375,6 +391,176 @@ def append_labor_progress(signals: list[dict[str, Any]], baseline: dict[str, Any
         signals.append({"type": "blockerCleared", "category": "blocker", "blocker": copy.deepcopy(old_blockers[key])})
 
 
+def append_growing_progress(signals: list[dict[str, Any]], baseline: dict[str, Any], current: dict[str, Any]) -> None:
+    before = growing_zones_by_id(baseline)
+    after = growing_zones_by_id(current)
+    for zone_id in sorted(set(before) & set(after)):
+        old = before[zone_id]
+        new = after[zone_id]
+        old_state = growing_phase(old)
+        new_state = growing_phase(new)
+        old_planted = integer(old.get("plantedCells"))
+        new_planted = integer(new.get("plantedCells"))
+        if old_state == new_state and old_planted == new_planted:
+            continue
+        signals.append({
+            "type": "growingZoneAdvanced",
+            "category": "growing",
+            "zoneId": zone_id,
+            "plantDef": new.get("plantDef"),
+            "from": {"state": old_state, "plantedCells": old_planted},
+            "to": {"state": new_state, "plantedCells": new_planted},
+            "plantingComplete": new.get("plantingComplete") is True,
+        })
+
+
+def append_research_progress(signals: list[dict[str, Any]], baseline: dict[str, Any], current: dict[str, Any]) -> None:
+    old_research = baseline.get("research") if isinstance(baseline.get("research"), dict) else {}
+    new_research = current.get("research") if isinstance(current.get("research"), dict) else {}
+    old_current = old_research.get("current") if isinstance(old_research.get("current"), dict) else None
+    new_current = new_research.get("current") if isinstance(new_research.get("current"), dict) else None
+    old_completed = {str(item.get("defName")) for item in dict_list(old_research.get("completed")) if item.get("defName")}
+    new_completed = {str(item.get("defName")) for item in dict_list(new_research.get("completed")) if item.get("defName")}
+    for def_name in sorted(new_completed - old_completed):
+        signals.append({"type": "researchCompleted", "category": "research", "defName": def_name})
+    if old_current is None or new_current is None or old_current.get("defName") != new_current.get("defName"):
+        return
+    old_progress = numeric(old_current.get("progress"))
+    new_progress = numeric(new_current.get("progress"))
+    if new_progress > old_progress:
+        signals.append({
+            "type": "researchAdvanced",
+            "category": "research",
+            "defName": new_current.get("defName"),
+            "from": old_progress,
+            "to": new_progress,
+            "cost": numeric(new_current.get("cost")),
+        })
+
+
+def build_completion_evidence(state: Any) -> dict[str, Any]:
+    if not isinstance(state, dict):
+        return {}
+    zones = [growing_zone_summary(item) for item in growing_zones(state)]
+    buildings = dict_list(state.get("buildings"))
+    completed_buildings = [item for item in buildings if item.get("type") == "building"]
+    pending_buildings = [item for item in buildings if item.get("type") in ("blueprint", "frame")]
+    completed_by_def = Counter(base_construction_def(item) for item in completed_buildings)
+    pending_by_def = Counter(base_construction_def(item) for item in pending_buildings)
+    room_keys = set()
+    for item in completed_buildings:
+        room = item.get("room") if isinstance(item.get("room"), dict) else None
+        if room_is_completed_shelter(room):
+            room_keys.add(room_identity(room))
+
+    research = state.get("research") if isinstance(state.get("research"), dict) else {}
+    current_research = research.get("current") if isinstance(research.get("current"), dict) else None
+    completed_research = [
+        {"defName": item.get("defName"), "label": item.get("label")}
+        for item in dict_list(research.get("completed"))[:40]
+    ]
+    labor = labor_state(state)
+    pending = labor.get("pendingWork") if isinstance(labor.get("pendingWork"), dict) else {}
+    hauling_known = "haulables" in pending
+    operations = state.get("operations") if isinstance(state.get("operations"), dict) else {}
+    beds = [item for item in dict_list(operations.get("beds")) if not item.get("medical") and not item.get("forPrisoners")]
+    for bed in beds:
+        room = bed.get("room") if isinstance(bed.get("room"), dict) else None
+        if room_is_completed_shelter(room):
+            room_keys.add(room_identity(room))
+    colonist_count = integer((state.get("colony") or {}).get("colonistCount")) if isinstance(state.get("colony"), dict) else len(dict_list(state.get("colonists")))
+    return {
+        "growing": {
+            "zones": zones[:20],
+            "plantingCompleteZones": sum(1 for item in zones if item.get("plantingComplete") is True),
+            "unfinishedPlantingZones": sum(1 for item in zones if item.get("plantingComplete") is not True),
+        },
+        "construction": {
+            "pendingBlueprints": integer(pending.get("blueprints")),
+            "pendingFrames": integer(pending.get("frames")),
+            "completedByDef": [
+                {"defName": key, "count": completed_by_def[key]}
+                for key in sorted(completed_by_def)[:30]
+            ],
+            "pendingByDef": [
+                {"defName": key, "count": pending_by_def[key]}
+                for key in sorted(pending_by_def)[:30]
+            ],
+            "enclosedRoofedRooms": len(room_keys),
+        },
+        "research": {
+            "active": copy.deepcopy(current_research),
+            "completed": completed_research,
+            "completedCount": len(dict_list(research.get("completed"))),
+        },
+        "hauling": {
+            "pendingHaulables": integer(pending.get("haulables")),
+            "backlogClear": integer(pending.get("haulables")) == 0 if hauling_known else None,
+        },
+        "shelter": {
+            "enclosedRoofedRooms": len(room_keys),
+            "usableBeds": len(beds),
+            "missingBeds": max(0, colonist_count - len(beds)),
+        },
+    }
+
+
+def authoritative_completion_for(item: dict[str, Any], progress: dict[str, Any]) -> list[str]:
+    completion = progress.get("completionEvidence") if isinstance(progress.get("completionEvidence"), dict) else {}
+    objective = {"objective": item.get("objective"), "key": item.get("key")}
+    categories = loop_categories(objective)
+    text = normalized_domain_text(objective)
+    evidence = []
+
+    growing = completion.get("growing") if isinstance(completion.get("growing"), dict) else {}
+    zones = dict_list(growing.get("zones"))
+    matched_zones = [
+        zone for zone in zones
+        if normalize_identifier(zone.get("id")) in normalize_identifier(text)
+        or normalize_identifier(zone.get("plantDef")) in normalize_identifier(text)
+    ]
+    relevant_zones = matched_zones or zones
+    if (
+        "growing" in categories
+        and "harvest" not in text
+        and relevant_zones
+        and all(zone.get("plantingComplete") is True for zone in relevant_zones)
+    ):
+        crop_names = sorted({str(zone.get("plantDef")) for zone in relevant_zones if zone.get("plantDef")})
+        crop = " (" + ", ".join(crop_names[:3]) + ")" if crop_names else ""
+        evidence.append("planting complete; crops are growing or harvestable" + crop)
+
+    construction = completion.get("construction") if isinstance(completion.get("construction"), dict) else {}
+    shelter = completion.get("shelter") if isinstance(completion.get("shelter"), dict) else {}
+    if "room" in categories and integer(shelter.get("enclosedRoofedRooms")) > 0:
+        evidence.append("an enclosed substantially roofed room is authoritatively present")
+    if "beds" in categories and integer(shelter.get("missingBeds")) == 0:
+        evidence.append("usable bed capacity meets current colonist count")
+    completed_defs = [str(entry.get("defName")) for entry in dict_list(construction.get("completedByDef"))]
+    pending_defs = {str(entry.get("defName")) for entry in dict_list(construction.get("pendingByDef"))}
+    matched_building = matching_domain_name(text, completed_defs)
+    if matched_building and matched_building not in pending_defs:
+        evidence.append("completed building present: " + matched_building)
+    for signal in dict_list(progress.get("signals")):
+        if signal.get("type") != "constructionAdvanced" or signal.get("to", {}).get("stage") != "building":
+            continue
+        def_name = str(signal.get("defName") or "")
+        if def_name and normalize_identifier(def_name) in normalize_identifier(text):
+            evidence.append("ordered construction completed: " + def_name)
+            break
+
+    research = completion.get("research") if isinstance(completion.get("research"), dict) else {}
+    completed_projects = dict_list(research.get("completed"))
+    matched_research = matching_domain_entry(text, completed_projects)
+    if "research" in categories and matched_research:
+        evidence.append("research completed: " + str(matched_research.get("defName")))
+
+    hauling = completion.get("hauling") if isinstance(completion.get("hauling"), dict) else {}
+    if "hauling" in categories and hauling.get("backlogClear") is True:
+        evidence.append("no currently relevant hauling backlog remains")
+    return evidence[:4]
+
+
 def compatible_snapshots(before: Any, after: Any) -> bool:
     if not isinstance(before, dict) or not isinstance(after, dict):
         return False
@@ -389,19 +575,116 @@ def compatible_snapshots(before: Any, after: Any) -> bool:
 
 
 def loop_categories(loop: dict[str, Any]) -> set[str]:
-    text = " ".join((str(loop.get("objective") or ""), str(loop.get("nextAction") or ""))).lower()
+    text = normalized_domain_text(loop)
     categories = set()
     keyword_groups = {
         "room": ("room", "enclos", "roof", "temperature", "cooler", "heater", "shelter"),
         "construction": ("build", "wall", "blueprint", "frame", "construct"),
         "designation": ("designat", "mine", "harvest", "cut"),
         "blocker": ("block", "prerequisite"),
-        "work": ("work", "haul", "research", "bill"),
+        "work": ("work", "haul", "research", "bill", "sow", "plant"),
+        "growing": ("grow", "plant", "sow", "crop", "field"),
+        "research": ("research",),
+        "hauling": ("haul", "stockpile", "storage"),
+        "beds": ("bed", "sleeping spot"),
     }
     for category, keywords in keyword_groups.items():
         if any(keyword in text for keyword in keywords):
             categories.add(category)
     return categories
+
+
+def growing_zones(state: dict[str, Any]) -> list[dict[str, Any]]:
+    map_state = state.get("map") if isinstance(state.get("map"), dict) else {}
+    return [item for item in dict_list(map_state.get("zones")) if item.get("type") == "growing"]
+
+
+def growing_zones_by_id(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {str(item["id"]): item for item in growing_zones(state) if item.get("id")}
+
+
+def growing_phase(zone: dict[str, Any]) -> str:
+    explicit = str(zone.get("growingState") or "")
+    if explicit in ("empty", "partiallyPlanted", "planted", "harvestable", "mixed"):
+        return explicit
+    if integer(zone.get("harvestableCells")) > 0:
+        return "harvestable"
+    if zone.get("plantingComplete") is True:
+        return "planted"
+    if integer(zone.get("plantedCells")) > 0:
+        return "partiallyPlanted"
+    return "empty"
+
+
+def growing_zone_summary(zone: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": zone.get("id"),
+        "plantDef": zone.get("plantDef"),
+        "cellCount": integer(zone.get("cellCount")),
+        "observedCells": integer(zone.get("observedCells")),
+        "plantedCells": integer(zone.get("plantedCells")),
+        "unsownEligibleCells": integer(zone.get("unsownEligibleCells")),
+        "growingCells": integer(zone.get("growingCells")),
+        "harvestableCells": integer(zone.get("harvestableCells")),
+        "plantingComplete": zone.get("plantingComplete") is True,
+        "state": growing_phase(zone),
+    }
+
+
+def room_is_completed_shelter(room: dict[str, Any] | None) -> bool:
+    if not isinstance(room, dict):
+        return False
+    coverage = numeric(room.get("roofCoverage"))
+    return (
+        room.get("enclosed") is True
+        and room.get("indoors") is True
+        and room.get("usesOutdoorTemperature") is False
+        and coverage >= 0.5
+    )
+
+
+def room_identity(room: dict[str, Any]) -> str:
+    bounds = room.get("bounds") if isinstance(room.get("bounds"), dict) else {}
+    return canonical_json({
+        "bounds": bounds,
+        "cellCount": integer(room.get("cellCount")),
+        "roofedCellCount": integer(room.get("roofedCellCount")),
+    })
+
+
+def normalized_domain_text(item: dict[str, Any]) -> str:
+    values = [item.get("objective"), item.get("nextAction"), item.get("next_action"), item.get("key")]
+    values.extend(item.get("blockers", []) if isinstance(item.get("blockers"), list) else [])
+    return " ".join(str(value or "") for value in values).lower()
+
+
+def matching_domain_name(text: str, names: list[str]) -> str | None:
+    normalized_text = normalize_identifier(text)
+    generic = {"wall", "door", "floor", "bed", "building"}
+    for name in sorted((item for item in names if item), key=len, reverse=True):
+        normalized = normalize_identifier(name)
+        if normalized and normalized not in generic and normalized in normalized_text:
+            return name
+    return None
+
+
+def matching_domain_entry(text: str, entries: list[dict[str, Any]]) -> dict[str, Any] | None:
+    normalized_text = normalize_identifier(text)
+    for entry in entries:
+        candidates = (entry.get("defName"), entry.get("label"))
+        if any(normalize_identifier(value) in normalized_text for value in candidates if normalize_identifier(value)):
+            return entry
+    return None
+
+
+def normalize_identifier(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+
+def numeric(value: Any) -> float:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return 0.0
 
 
 def project_tasks_by_id(handoff: dict[str, Any] | None) -> dict[str, dict[str, Any]]:

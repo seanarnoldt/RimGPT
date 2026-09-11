@@ -176,15 +176,21 @@ class StateDiff:
         new_def = object_value(new_current, "defName")
         if old_def != new_def:
             result["activeProject"] = {"from": research_summary(old_current), "to": research_summary(new_current)}
-            current_available = {item.get("defName") for item in as_dict_list(after.get("available"))}
-            if old_def and old_def not in current_available:
-                result["completed"] = research_summary(old_current)
+            if "completed" not in before and "completed" not in after:
+                current_available = {item.get("defName") for item in as_dict_list(after.get("available"))}
+                if old_def and old_def not in current_available:
+                    result["completed"] = [research_summary(old_current)]
         elif old_current is not None and new_current is not None:
             old_progress = number(old_current.get("progress"))
             new_progress = number(new_current.get("progress"))
             cost = number(new_current.get("cost")) or number(old_current.get("cost"))
             if meaningful_progress(old_progress, new_progress, cost):
                 result["progress"] = {"project": new_def, "from": old_progress, "to": new_progress, "cost": cost}
+        old_completed = {item.get("defName"): item for item in as_dict_list(before.get("completed")) if item.get("defName")}
+        new_completed = {item.get("defName"): item for item in as_dict_list(after.get("completed")) if item.get("defName")}
+        newly_completed = [research_summary(new_completed[key]) for key in sorted(new_completed.keys() - old_completed.keys())]
+        if newly_completed:
+            result["completed"] = newly_completed[:self.max_details]
         return result
 
     def _diff_threats(self, before: Any, after: Any) -> dict[str, Any]:
@@ -232,7 +238,11 @@ class StateDiff:
         self._bounded_put(result, "removed", [identity_summary(old[key]) for key in sorted(old.keys() - new.keys())])
         changed = []
         for zone_id in sorted(old.keys() & new.keys()):
-            delta = fields_diff(old[zone_id], new[zone_id], ("type", "label", "plantDef", "priority", "preset", "cellCount", "bounds"))
+            delta = fields_diff(old[zone_id], new[zone_id], (
+                "type", "label", "plantDef", "priority", "preset", "cellCount", "bounds",
+                "observedCells", "plantedCells", "unsownEligibleCells", "growingCells",
+                "harvestableCells", "plantingComplete", "growingState",
+            ))
             geometry = cell_geometry_diff(old[zone_id].get("cells"), new[zone_id].get("cells"), self.max_details * 2)
             self._put(delta, "geometry", geometry)
             if delta:
@@ -811,7 +821,11 @@ def compact_threat(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def compact_zone(item: dict[str, Any], cell_limit: int) -> dict[str, Any]:
-    result = pick(item, ("id", "type", "label", "cellCount", "bounds", "plantDef", "priority", "preset"))
+    result = pick(item, (
+        "id", "type", "label", "cellCount", "bounds", "plantDef", "priority", "preset",
+        "observedCells", "plantedCells", "unsownEligibleCells", "growingCells",
+        "harvestableCells", "plantingComplete", "growingState",
+    ))
     cells = sorted(cell_set(item.get("cells")))
     if cells:
         result["cells"] = [{"x": x, "z": z} for x, z in cells[:cell_limit]]

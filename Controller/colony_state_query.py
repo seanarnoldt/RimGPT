@@ -101,7 +101,15 @@ class ColonyStateQuery:
             [select_fields(item, ("defName", "label", "progress", "cost")) for item in dict_list(research.get("available"))],
             min(self.max_entries, 40),
         )
-        return {"current": compact_tree(research.get("current"), max_list=8, max_depth=3), "available": available}, truncated
+        completed, completed_truncated = bounded_list(
+            [select_fields(item, ("defName", "label")) for item in dict_list(research.get("completed"))],
+            min(self.max_entries, 80),
+        )
+        return {
+            "current": compact_tree(research.get("current"), max_list=8, max_depth=3),
+            "available": available,
+            "completed": completed,
+        }, truncated or completed_truncated
 
     def _buildings(self, state: dict[str, Any]) -> tuple[Any, bool]:
         buildings = dict_list(state.get("buildings"))
@@ -120,7 +128,11 @@ class ColonyStateQuery:
     def _zones(self, state: dict[str, Any]) -> tuple[Any, bool]:
         map_state = state.get("map") if isinstance(state.get("map"), dict) else {}
         operations = state.get("operations") if isinstance(state.get("operations"), dict) else {}
-        zones = [select_fields(item, ("id", "type", "label", "cellCount", "bounds", "plantDef", "priority", "preset")) for item in dict_list(map_state.get("zones"))]
+        zones = [select_fields(item, (
+            "id", "type", "label", "cellCount", "bounds", "plantDef", "priority", "preset",
+            "observedCells", "plantedCells", "unsownEligibleCells", "growingCells",
+            "harvestableCells", "plantingComplete", "growingState",
+        )) for item in dict_list(map_state.get("zones"))]
         areas = [select_fields(item, ("id", "label", "cellCount", "bounds")) for item in dict_list(operations.get("allowedAreas"))]
         zones, zone_truncated = bounded_list(zones, self.max_entries)
         areas, area_truncated = bounded_list(areas, self.max_entries)
@@ -154,7 +166,7 @@ class ColonyStateQuery:
 
     def _beds(self, state: dict[str, Any]) -> tuple[Any, bool]:
         operations = state.get("operations") if isinstance(state.get("operations"), dict) else {}
-        beds = [select_fields(item, ("id", "defName", "label", "position", "medical", "forPrisoners", "owners")) for item in dict_list(operations.get("beds"))]
+        beds = [select_fields(item, ("id", "defName", "label", "position", "medical", "forPrisoners", "room", "owners")) for item in dict_list(operations.get("beds"))]
         return bounded_list(beds, self.max_entries)
 
     def _worktables(self, state: dict[str, Any]) -> tuple[Any, bool]:

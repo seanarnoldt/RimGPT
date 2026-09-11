@@ -40,21 +40,25 @@ namespace RimGPT
             json.Append("[");
             int written = 0;
             List<Thing> things = map.listerThings.AllThings;
-            for (int i = 0; i < things.Count && written < MaxStateBuildings; i++)
+            for (int priority = 0; priority <= 3 && written < MaxStateBuildings; priority++)
             {
-                Thing thing = things[i];
-                if (!IsVisible(thing, map) || !IsRelevantBuildingStateThing(thing))
+                for (int i = 0; i < things.Count && written < MaxStateBuildings; i++)
                 {
-                    continue;
-                }
+                    Thing thing = things[i];
+                    if (!IsVisible(thing, map) || !IsRelevantBuildingStateThing(thing) ||
+                        StateBuildingPriority(thing, map) != priority)
+                    {
+                        continue;
+                    }
 
-                if (written > 0)
-                {
-                    json.Append(",");
-                }
+                    if (written > 0)
+                    {
+                        json.Append(",");
+                    }
 
-                WriteThingObject(json, thing, map);
-                written++;
+                    WriteThingObject(json, thing, map);
+                    written++;
+                }
             }
             json.Append("]");
             return json.ToString();
@@ -609,8 +613,72 @@ namespace RimGPT
                 ThingDef plant = growing.GetPlantDefToGrow();
                 json.Append(",\"plantDef\":");
                 WriteStringValue(json, plant != null ? plant.defName : null);
+                WriteGrowingZoneState(json, growing, plant);
             }
             json.Append("}");
+        }
+
+        private static void WriteGrowingZoneState(StringBuilder json, Zone_Growing zone, ThingDef configuredPlant)
+        {
+            int observedCells = 0;
+            int plantedCells = 0;
+            int unsownEligibleCells = 0;
+            int growingCells = 0;
+            int harvestableCells = 0;
+            bool hasDifferentPlant = false;
+            foreach (IntVec3 cell in zone.Cells)
+            {
+                if (!cell.InBounds(zone.Map) || cell.Fogged(zone.Map))
+                {
+                    continue;
+                }
+                observedCells++;
+                Plant plant = cell.GetPlant(zone.Map);
+                bool configuredCrop = plant != null && configuredPlant != null && plant.def == configuredPlant;
+                if (configuredCrop)
+                {
+                    plantedCells++;
+                    if (SafeBool(delegate { return plant.HarvestableNow; }))
+                    {
+                        harvestableCells++;
+                    }
+                    else
+                    {
+                        growingCells++;
+                    }
+                }
+                else if (plant != null)
+                {
+                    hasDifferentPlant = true;
+                }
+                else if (configuredPlant != null && SafeBool(delegate {
+                    return PlantUtility.CanNowPlantAt(configuredPlant, cell, zone.Map, false);
+                }))
+                {
+                    unsownEligibleCells++;
+                }
+            }
+
+            bool fullyObserved = observedCells == zone.CellCount;
+            bool plantingComplete = fullyObserved && zone.CellCount > 0 && plantedCells == zone.CellCount;
+            string state = "empty";
+            if (plantingComplete)
+            {
+                state = harvestableCells > 0 && growingCells > 0 ? "mixed" :
+                    (harvestableCells > 0 ? "harvestable" : "planted");
+            }
+            else if (plantedCells > 0 || hasDifferentPlant)
+            {
+                state = harvestableCells > 0 ? "mixed" : "partiallyPlanted";
+            }
+
+            WriteInt(json, "observedCells", observedCells, true);
+            WriteInt(json, "plantedCells", plantedCells, true);
+            WriteInt(json, "unsownEligibleCells", unsownEligibleCells, true);
+            WriteInt(json, "growingCells", growingCells, true);
+            WriteInt(json, "harvestableCells", harvestableCells, true);
+            WriteBool(json, "plantingComplete", plantingComplete, true);
+            WriteString(json, "growingState", state, true);
         }
 
         private static void WriteThingObject(StringBuilder json, Thing thing, Map map)
@@ -633,7 +701,7 @@ namespace RimGPT
             json.Append("}");
         }
 
-        private static void WriteRoom(StringBuilder json, string name, Room room, Map map, bool comma)
+        internal static void WriteRoom(StringBuilder json, string name, Room room, Map map, bool comma)
         {
             WriteName(json, name, comma);
             if (room == null || room.Map != map || room.Fogged)
@@ -791,6 +859,24 @@ namespace RimGPT
         private static bool IsRelevantBuildingStateThing(Thing thing)
         {
             return thing is Building || thing is Blueprint || thing is Frame;
+        }
+
+        private static int StateBuildingPriority(Thing thing, Map map)
+        {
+            if (thing is Blueprint || thing is Frame)
+            {
+                return 0;
+            }
+            Area home = map.areaManager != null ? map.areaManager.Home : null;
+            if (home != null && thing.Position.InBounds(map) && home[thing.Position])
+            {
+                return 1;
+            }
+            if (thing.Faction == Faction.OfPlayer)
+            {
+                return 2;
+            }
+            return 3;
         }
 
         private static IntVec3 ColonyCenter(Map map)

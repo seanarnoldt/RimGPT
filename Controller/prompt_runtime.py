@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 
-RIMGPT_PROMPT_VERSION = "context-memory-v1-m10h2"
+RIMGPT_PROMPT_VERSION = "context-memory-v1-m10h5"
 DEFAULT_PROMPT_CACHE_MODE = "implicit"
 PROMPT_CACHE_TTL = "30m"
 DEFAULT_COMPACT_THRESHOLD_TOKENS = 20_000

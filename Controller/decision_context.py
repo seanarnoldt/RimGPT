@@ -232,6 +232,11 @@ def build_bootstrap_state(state: dict[str, Any]) -> dict[str, Any]:
             "current": copy.deepcopy(research.get("current")),
             "availableCount": len(dict_list(research.get("available"))),
             "availableSample": available_research,
+            "completedCount": len(dict_list(research.get("completed"))),
+            "completedSample": [
+                select_fields(item, ("defName", "label"))
+                for item in dict_list(research.get("completed"))[:20]
+            ],
         },
         "immediateThreats": threats,
         "threatsTruncated": len(dict_list(state.get("threats"))) > len(threats),
@@ -310,7 +315,11 @@ def bootstrap_structures(state: dict[str, Any]) -> dict[str, Any]:
         "importantEntries": details,
         "beds": {"total": len(beds), "colonistUsable": sum(1 for bed in beds if not bed.get("medical") and not bed.get("forPrisoners"))},
         "worktables": [select_fields(item, ("id", "defName", "label", "position", "operational")) for item in tables[:20]],
-        "zones": [select_fields(item, ("id", "type", "label", "cellCount", "bounds", "plantDef", "priority", "preset")) for item in zones[:30]],
+        "zones": [select_fields(item, (
+            "id", "type", "label", "cellCount", "bounds", "plantDef", "priority", "preset",
+            "plantedCells", "unsownEligibleCells", "growingCells", "harvestableCells",
+            "plantingComplete", "growingState",
+        )) for item in zones[:30]],
         "power": power_summary(state),
     }
 

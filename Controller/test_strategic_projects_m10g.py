@@ -251,7 +251,7 @@ class StrategicProjectsM10GTests(unittest.TestCase):
         self.assertNotIn('"buildings":', serialize_context(context))
 
     def test_prompt_encodes_parallel_and_success_criteria_policy(self):
-        self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m10h2")
+        self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m10h5")
         self.assertIn("productive in parallel", SYSTEM_INSTRUCTIONS)
         self.assertIn("background progress", SYSTEM_INSTRUCTIONS)
         self.assertIn("Alert disappearance alone is insufficient", SYSTEM_INSTRUCTIONS)

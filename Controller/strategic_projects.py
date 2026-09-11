@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from progress_tracking import loop_categories
+from progress_tracking import authoritative_completion_for, loop_categories
 
 
 PLANNING_HORIZON_DAYS = 3
@@ -30,7 +30,7 @@ def build_project_context(
     }
     progress_by_category = progress_categories(progress)
     result_projects = [
-        summarize_project(project, stalled, progress_by_category)
+        summarize_project(project, stalled, progress_by_category, progress)
         for project in projects[:MAX_PROJECT_CONTEXT]
         if isinstance(project, dict)
     ]
@@ -45,6 +45,7 @@ def summarize_project(
     project: dict[str, Any],
     stalled: dict[str, dict[str, Any]],
     progress_by_category: dict[str, list[str]],
+    progress: dict[str, Any],
 ) -> dict[str, Any]:
     tasks = [item for item in project.get("tasks", [])[:MAX_TASK_CONTEXT] if isinstance(item, dict)]
     by_id = {str(item.get("id")): item for item in tasks if item.get("id")}
@@ -54,6 +55,7 @@ def summarize_project(
     background = []
     waiting = []
     attention = []
+    state_satisfied = []
     evidence: set[str] = set()
 
     for task_id, task in by_id.items():
@@ -62,8 +64,18 @@ def summarize_project(
         waiting_on = [item for item in dependencies if item not in completed]
         blockers = [str(item) for item in task.get("blockers", []) if str(item)]
         task_stall = stalled.get(task_id, {})
-        is_stalled = int_value(task_stall.get("noRelevantProgressCycles")) >= 2
+        completion_evidence = authoritative_completion_for(task, progress)
+        is_stalled = int_value(task_stall.get("noRelevantProgressCycles")) >= 2 and not completion_evidence
         if status == "completed":
+            continue
+        if completion_evidence:
+            state_satisfied.append({
+                "taskId": task_id,
+                "evidence": completion_evidence,
+                "guidance": "Authoritative state satisfies this phase; update the model-authored task status.",
+            })
+            for category in task_categories(task):
+                evidence.update(progress_by_category.get(category, []))
             continue
         if task.get("mode") == "background" or status == "background":
             background.append(task_id)
@@ -93,9 +105,11 @@ def summarize_project(
         "availableTaskIds": sorted(available),
         "waitingTasks": waiting[:MAX_ATTENTION_ITEMS],
         "attentionTasks": attention[:MAX_ATTENTION_ITEMS],
+        "stateSatisfiedTasks": state_satisfied[:MAX_ATTENTION_ITEMS],
         "progressEvidence": sorted(evidence)[:8],
         "completion": {
             "completedTasks": len(completed),
+            "stateSatisfiedTasks": len(state_satisfied),
             "totalTasks": len(tasks),
             "successCriteriaCount": len(project.get("successCriteria", [])),
             "requiresAuthoritativeCriteria": True,
@@ -122,7 +136,16 @@ def build_work_continuity(
     map_state = state.get("map") if isinstance(state.get("map"), dict) else {}
     growing_zones = [item for item in dict_list(map_state.get("zones")) if item.get("type") == "growing"]
     if growing_zones:
-        background.append({"type": "growing", "zoneCount": len(growing_zones)})
+        complete = [item for item in growing_zones if item.get("plantingComplete") is True]
+        background.append({
+            "type": "growing",
+            "zoneCount": len(growing_zones),
+            "plantingCompleteZones": len(complete),
+            "unfinishedPlantingZones": len(growing_zones) - len(complete),
+            "growingCells": sum(int_value(item.get("growingCells")) for item in growing_zones),
+            "harvestableCells": sum(int_value(item.get("harvestableCells")) for item in growing_zones),
+            "states": sorted({str(item.get("growingState")) for item in growing_zones if item.get("growingState")}),
+        })
 
     operations = state.get("operations") if isinstance(state.get("operations"), dict) else {}
     labor = operations.get("labor") if isinstance(operations.get("labor"), dict) else {}

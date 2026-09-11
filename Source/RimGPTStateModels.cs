@@ -201,6 +201,7 @@ namespace RimGPT
     {
         public RimGPTResearchProjectState Current;
         public List<RimGPTResearchProjectState> Available;
+        public List<RimGPTResearchProjectState> Completed;
     }
 
     public sealed class RimGPTResearchProjectState

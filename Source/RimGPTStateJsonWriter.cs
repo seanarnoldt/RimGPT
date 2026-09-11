@@ -164,6 +164,7 @@ namespace RimGPT
                 json.Append("}");
             }
             WriteResearchProjectsField(json, "available", research.Available, true);
+            WriteResearchProjectsField(json, "completed", research.Completed, true);
             json.Append("}");
         }
 
