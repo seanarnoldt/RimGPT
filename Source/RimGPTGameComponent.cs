@@ -85,6 +85,9 @@ namespace RimGPT
                         case RimGPTReadRequestType.ConstructionDiagnostic:
                             json = RimGPTConstructionDiagnosticJson.Build(request.ThingId);
                             break;
+                        case RimGPTReadRequestType.ResourceSources:
+                            json = RimGPTResourceSourceJson.Build(request.ResourceDef);
+                            break;
                         case RimGPTReadRequestType.BuildOptions:
                             json = RimGPTCatalogJson.BuildBuildOptionsJson(request.Category, request.Search);
                             break;

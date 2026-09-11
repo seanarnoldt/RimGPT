@@ -158,6 +158,12 @@ namespace RimGPT
                     return;
                 }
 
+                if (method == "GET" && path == "/resources/sources")
+                {
+                    HandleResourceSources(context);
+                    return;
+                }
+
                 if (method == "GET" && path == "/build/options")
                 {
                     HandleBuildOptions(context);
@@ -359,6 +365,25 @@ namespace RimGPT
             {
                 Type = RimGPTReadRequestType.ConstructionDiagnostic,
                 ThingId = thingId
+            };
+            int statusCode;
+            string json = RimGPTReadRequestQueue.EnqueueAndWait(request, out statusCode);
+            WriteJson(context.Response, statusCode, json);
+        }
+
+        private static void HandleResourceSources(HttpListenerContext context)
+        {
+            string resourceDef = context.Request.QueryString["resourceDef"];
+            if (string.IsNullOrEmpty(resourceDef) || resourceDef.Length > 128)
+            {
+                WriteJson(context.Response, 400, "{\"error\":\"missingOrInvalidResourceDef\"}");
+                return;
+            }
+
+            RimGPTReadRequest request = new RimGPTReadRequest
+            {
+                Type = RimGPTReadRequestType.ResourceSources,
+                ResourceDef = resourceDef
             };
             int statusCode;
             string json = RimGPTReadRequestQueue.EnqueueAndWait(request, out statusCode);

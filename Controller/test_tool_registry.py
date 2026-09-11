@@ -96,7 +96,7 @@ class ToolRegistryTests(unittest.TestCase):
         registrations = DEFAULT_TOOL_REGISTRY.all_registrations()
         names = [item.name for item in registrations]
         self.assertEqual(len(names), len(set(names)))
-        self.assertEqual(len(names), 57)
+        self.assertEqual(len(names), 58)
         self.assertTrue(all(item.group in DEFAULT_TOOL_REGISTRY.group_names for item in registrations))
         self.assertTrue(all(item.executor for item in registrations))
 
@@ -106,6 +106,7 @@ class ToolRegistryTests(unittest.TestCase):
         self.assertEqual(active.groups, (CORE_GROUP,))
         self.assertIn("get_colony_state", names)
         self.assertIn("diagnose_construction", names)
+        self.assertIn("find_resource_sources", names)
         self.assertIn("list_capabilities", names)
         self.assertIn("enable_capability", names)
         self.assertLess(serialized_chars(active.schemas()), 10_000)

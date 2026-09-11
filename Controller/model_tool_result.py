@@ -15,7 +15,7 @@ CATALOG_TOOLS = {"list_build_options", "get_build_info", "list_growable_plants",
 CAPABILITY_TOOLS = {"list_capabilities", "enable_capability"}
 TERMINAL_TOOLS = {"finish_decision"}
 READ_TOOLS = CATALOG_TOOLS | CAPABILITY_TOOLS | {
-    "get_colony_state", "inspect_room_at", "diagnose_construction", "inspect_map",
+    "get_colony_state", "inspect_room_at", "diagnose_construction", "find_resource_sources", "inspect_map",
     "check_build_placements", "check_zone_placement", "finish_decision"
 }
 
@@ -134,6 +134,8 @@ class ModelToolResultFormatter:
             return compact_room_at(result)
         if tool_name == "diagnose_construction":
             return compact_construction_diagnostic(result)
+        if tool_name == "find_resource_sources":
+            return compact_resource_sources(result)
         if tool_name == "inspect_map":
             return compact_inspect_map(result)
         if tool_name == "check_build_placements":
@@ -277,6 +279,37 @@ def compact_construction_diagnostic(raw: dict[str, Any]) -> dict[str, Any]:
         "labor": select_fields(labor, ("capable", "enabled", "idleEnabled")) if labor else None,
         "blockers": copy.deepcopy(raw.get("blockers")),
         "primaryBlocker": raw.get("primaryBlocker") or "unknown",
+    })
+
+
+def compact_resource_sources(raw: dict[str, Any]) -> dict[str, Any]:
+    sources = []
+    samples_remaining = 16
+    for source in dict_list(raw.get("sources"))[:8]:
+        samples = [
+            drop_nulls(select_fields(sample, ("id", "x", "z", "quantity", "forbidden")))
+            for sample in dict_list(source.get("sample"))[:min(6, samples_remaining)]
+        ]
+        samples_remaining -= len(samples)
+        sources.append(drop_nulls({
+            **select_fields(source, (
+                "type", "defName", "label", "count", "quantity", "nominalYield", "alreadyDesignated"
+            )),
+            "sample": samples,
+        }))
+    return drop_nulls({
+        "success": True,
+        "gameLoaded": raw.get("gameLoaded"),
+        "resourceKnown": raw.get("resourceKnown"),
+        "supported": raw.get("supported"),
+        "resourceDef": raw.get("resourceDef"),
+        "label": raw.get("label"),
+        "available": raw.get("available"),
+        "forbidden": raw.get("forbidden"),
+        "sources": sources,
+        "sourceTypes": copy.deepcopy(raw.get("sourceTypes")),
+        "truncated": raw.get("truncated"),
+        "reason": raw.get("reason"),
     })
 
 

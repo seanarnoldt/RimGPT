@@ -69,6 +69,9 @@ class RimWorldBridge:
     def diagnose_construction(self, thing_id: str) -> dict[str, Any]:
         return self._request_json("GET", "/construction/diagnose", params={"thingId": thing_id})
 
+    def find_resource_sources(self, resource_def: str) -> dict[str, Any]:
+        return self._request_json("GET", "/resources/sources", params={"resourceDef": resource_def})
+
     def list_build_options(self, category: str | None = None, search: str | None = None) -> dict[str, Any]:
         params: dict[str, Any] = {}
         if category:

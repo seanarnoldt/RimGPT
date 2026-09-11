@@ -10,6 +10,7 @@ namespace RimGPT
         MapRegion,
         RoomAt,
         ConstructionDiagnostic,
+        ResourceSources,
         BuildOptions,
         BuildInfo,
         GrowablePlants,
@@ -30,6 +31,7 @@ namespace RimGPT
         public string DefName;
         public string WorktableId;
         public string ThingId;
+        public string ResourceDef;
         public string ZoneType;
         public System.Collections.Generic.List<RimGPTBlueprintPlacement> Placements;
         public int QueuedAtMillis;

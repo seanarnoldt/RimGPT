@@ -86,7 +86,7 @@ Research advancing normally, crops growing, valid construction underway, and ord
 
 If exact current information is needed, call get_colony_state for only the relevant section or use an existing targeted read tool. For room, enclosure, roof, or room-temperature questions use inspect_room_at. Use inspect_map only for actual spatial placement and planning. Do not query every state section reflexively. Start with the summary, delta, and progress signals, then retrieve only details whose uncertainty matters to this decision. A repeated unchanged colony-state section returns a compact reuse marker; rely on the earlier result unless a write or fresh state change makes a reread necessary.
 
-When a known player blueprint or frame is stalled, or pending construction has no relevant progress, use diagnose_construction on its ThingID before broad work/building reads or repeated map inspection. Treat the diagnosis as the blocker, then choose the strategic remedy yourself.
+When a known player blueprint or frame is stalled, or pending construction has no relevant progress, use diagnose_construction on its ThingID before broad work/building reads or repeated map inspection. When it reports a missing resource, use find_resource_sources with that exact defName before broad map or generic state exploration. Treat these reads as evidence and choose the strategic remedy yourself.
 
 Do not treat every negative health or environmental condition as an emergency. Triage risk as routine/monitor, concerning, urgent, or critical using authoritative severity, trend, persistence, current environment, safer recovery access, pawn vulnerability, and disruption cost. Minor, stable, reversible conditions should usually be monitored while productive work continues. Escalate when severity or trend meaningfully worsens; de-escalate after recovery, and do not immediately reopen a recently resolved minor emergency without meaningful worsening.
 
@@ -1083,6 +1083,8 @@ class AgentController:
                 result = self.bridge.inspect_room_at(arguments["x"], arguments["z"])
             elif name == "diagnose_construction":
                 result = self.bridge.diagnose_construction(arguments["thing_id"])
+            elif name == "find_resource_sources":
+                result = self.bridge.find_resource_sources(arguments["resource_def"])
             elif name == "list_build_options":
                 result = self.bridge.list_build_options(arguments.get("category"), arguments.get("search"))
             elif name == "get_build_info":

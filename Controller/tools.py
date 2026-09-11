@@ -196,6 +196,23 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "type": "function",
+        "name": "find_resource_sources",
+        "description": "Find bounded, visible, player-legitimate sources for one exact resource defName. Use after a missing-material diagnosis before broad map inspection. Reports stored haulables and, for WoodLog or Steel, actionable cuttable plants or mineable deposits. It does not choose or perform a remedy.",
+        "strict": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "resource_def": {
+                    "type": "string",
+                    "description": "Exact missing ThingDef.defName, such as WoodLog or Steel.",
+                },
+            },
+            "required": ["resource_def"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
         "name": "inspect_map",
         "description": "Read-only spatial planning inspection of a bounded current-map RimWorld x/z rectangle. Use inspect_room_at, not this tool, for enclosure or room-status verification. Bounds are inclusive, so max_x-min_x+1 and max_z-min_z+1 must each be at most 40. Prefer focused 15x15 to 20x20 planning regions. Hidden/fogged contents are not exposed.",
         "strict": True,
