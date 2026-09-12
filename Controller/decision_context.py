@@ -488,6 +488,10 @@ def normalize_trigger(trigger: dict[str, Any] | None) -> dict[str, Any]:
         value = trigger[key]
         if isinstance(value, (str, int, float, bool)) or value is None:
             result[str(key)[:80]] = value[:500] if isinstance(value, str) else value
+        elif isinstance(value, list):
+            primitive = [item for item in value[:20] if isinstance(item, (str, int, float, bool))]
+            if primitive:
+                result[str(key)[:80]] = primitive
     return result
 
 

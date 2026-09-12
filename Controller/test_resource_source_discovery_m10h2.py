@@ -187,7 +187,7 @@ class ResourceSourceDiscoveryM10H2Tests(unittest.TestCase):
         self.assertEqual(result["primaryBlocker"], "missingMaterials")
 
     def test_prompt_version_advanced(self):
-        self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m10h5")
+        self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m11.2")
 
 
 if __name__ == "__main__":

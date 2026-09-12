@@ -158,7 +158,7 @@ class ConstructionDiagnosticM10H1Tests(unittest.TestCase):
         self.assertIn("pawn.WorkTypeIsDisabled(construction)", diagnostic_source)
 
     def test_prompt_version_advanced_for_focused_routing(self):
-        self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m10h5")
+        self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m11.2")
 
 
 if __name__ == "__main__":

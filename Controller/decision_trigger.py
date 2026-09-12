@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 from collections import deque
@@ -21,6 +22,7 @@ from strategic_projects import build_project_context
 
 
 DEFAULT_REVIEW_INTERVAL_TICKS = 30_000
+DEFAULT_IDLE_PERSISTENCE_TICKS = 2_500
 MAX_TRIGGER_FINGERPRINTS = 64
 KIND_ORDER = {
     "colonist_downed": 0,
@@ -33,6 +35,7 @@ KIND_ORDER = {
     "construction_blocked": 13,
     "research_complete": 14,
     "construction_complete": 15,
+    "productive_idleness": 20,
 }
 
 
@@ -44,6 +47,7 @@ class DecisionTrigger:
     reason: str
     fingerprint: str | None = None
     ticks_game: int | None = None
+    evidence: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,18 +63,24 @@ class TriggerEvaluator:
     def __init__(
         self,
         review_interval_ticks: int = DEFAULT_REVIEW_INTERVAL_TICKS,
+        idle_persistence_ticks: int = DEFAULT_IDLE_PERSISTENCE_TICKS,
         max_fingerprints: int = MAX_TRIGGER_FINGERPRINTS,
     ) -> None:
         if review_interval_ticks <= 0:
             raise ValueError("review_interval_ticks must be positive")
         if max_fingerprints <= 0:
             raise ValueError("max_fingerprints must be positive")
+        if idle_persistence_ticks <= 0:
+            raise ValueError("idle_persistence_ticks must be positive")
         self.review_interval_ticks = review_interval_ticks
+        self.idle_persistence_ticks = idle_persistence_ticks
         self.max_fingerprints = max_fingerprints
         self._fingerprints: deque[str] = deque()
         self._fingerprint_set: set[str] = set()
         self._last_review_tick: int | None = None
         self._latest_tick: int | None = None
+        self._idle_since_tick: int | None = None
+        self._idle_signature: tuple[str, ...] = ()
 
     @property
     def fingerprint_count(self) -> int:
@@ -80,12 +90,27 @@ class TriggerEvaluator:
         self._fingerprints.clear()
         self._fingerprint_set.clear()
         self._last_review_tick = ticks_game
+        self._idle_since_tick = None
+        self._idle_signature = ()
 
     def acknowledge_review(self, ticks_game: int | None = None) -> None:
         """Start the next review interval after a future scheduler handles one."""
         acknowledged = ticks_game if ticks_game is not None else self._latest_tick
         if acknowledged is not None:
             self._last_review_tick = acknowledged
+
+    def acknowledge_trigger(self, decision: DecisionTrigger) -> None:
+        """Acknowledge scheduler handling without persisting observer state."""
+        if decision.kind == "periodic_review":
+            self.acknowledge_review(decision.ticks_game)
+        if decision.kind == "productive_idleness":
+            if decision.fingerprint:
+                self._fingerprint_set.discard(decision.fingerprint)
+                try:
+                    self._fingerprints.remove(decision.fingerprint)
+                except ValueError:
+                    pass
+            self._idle_since_tick = self._latest_tick
 
     def evaluate(
         self,
@@ -97,15 +122,20 @@ class TriggerEvaluator:
         self._latest_tick = ticks
         if not isinstance(previous, dict):
             self.reset(ticks)
+            self._track_productive_idleness(current, emit=False)
             return no_trigger("Initial authoritative observation established", ticks)
         if not compatible_observation_stream(previous, current):
             self.reset(ticks)
+            self._track_productive_idleness(current, emit=False)
             return no_trigger("Authoritative observation stream changed; baseline re-established", ticks)
 
         context = context or TriggerContext()
         progress = build_progress_signals(previous, current)
         candidates = self._urgent_candidates(previous, current, context)
         candidates.extend(self._normal_candidates(previous, current, context, progress))
+        idle_candidate = self._track_productive_idleness(current, emit=True)
+        if idle_candidate is not None:
+            candidates.append(idle_candidate)
         candidates.sort(key=lambda item: (
             0 if item.priority == "urgent" else 1,
             KIND_ORDER.get(item.kind, 50),
@@ -122,6 +152,37 @@ class TriggerEvaluator:
             self._remember(periodic.fingerprint)
             return periodic
         return no_trigger("No meaningful authoritative state transition", ticks)
+
+    def _track_productive_idleness(
+        self, current: dict[str, Any], *, emit: bool
+    ) -> DecisionTrigger | None:
+        ticks = state_ticks(current)
+        labor_state = labor(current)
+        count = int_value(labor_state.get("capableIdleColonistCount"))
+        ids = tuple(sorted(
+            str(item.get("id"))
+            for item in dict_list(labor_state.get("capableIdleColonists"))
+            if item.get("id")
+        ))
+        signature = ids or tuple(f"count:{index}" for index in range(count))
+        if count <= 0 or ticks is None:
+            self._idle_since_tick = None
+            self._idle_signature = ()
+            return None
+        if signature != self._idle_signature or self._idle_since_tick is None or ticks < self._idle_since_tick:
+            self._idle_signature = signature
+            self._idle_since_tick = ticks
+            return None
+        if not emit or ticks - self._idle_since_tick < self.idle_persistence_ticks:
+            return None
+        evidence = {"capableIdleColonists": count, "capableIdlePawnIds": list(ids)}
+        return trigger(
+            "productive_idleness",
+            "normal",
+            "Capable colonists have remained idle; current strategy may not provide enough useful work",
+            ticks,
+            evidence,
+        )
 
     def _urgent_candidates(
         self,
@@ -391,11 +452,12 @@ def new_awareness_entries(previous: dict[str, Any], current: dict[str, Any]) -> 
 def trigger(kind: str, priority: str, reason: str, ticks: int | None, evidence: Any) -> DecisionTrigger:
     canonical = json.dumps({"kind": kind, "evidence": evidence}, sort_keys=True, separators=(",", ":"), default=str)
     fingerprint = kind + ":" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
-    return DecisionTrigger(True, kind, priority, reason, fingerprint, ticks)
+    retained = copy.deepcopy(evidence) if isinstance(evidence, dict) else None
+    return DecisionTrigger(True, kind, priority, reason, fingerprint, ticks, retained)
 
 
 def no_trigger(reason: str, ticks: int | None) -> DecisionTrigger:
-    return DecisionTrigger(False, "none", "none", reason, None, ticks)
+    return DecisionTrigger(False, "none", "none", reason, None, ticks, None)
 
 
 def state_ticks(state: dict[str, Any]) -> int | None:

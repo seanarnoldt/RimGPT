@@ -39,6 +39,9 @@ class StateObserver:
         """Reset periodic cadence after a future scheduler handles a review."""
         self.evaluator.acknowledge_review()
 
+    def acknowledge_trigger(self, trigger: DecisionTrigger) -> None:
+        self.evaluator.acknowledge_trigger(trigger)
+
     def observe_once(self) -> DecisionTrigger:
         snapshot = self.bridge.get_state()
         if not isinstance(snapshot, dict):

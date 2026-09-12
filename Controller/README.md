@@ -70,6 +70,23 @@ Run one real decision cycle:
 python rimgpt.py
 ```
 
+Run the bounded autonomous scheduler:
+
+```bash
+python autonomous.py
+```
+
+The scheduler polls authoritative state without calling the model on every poll.
+Meaningful triggers, persistent capable idleness, and periodic reviews can start
+one normal decision cycle. Normal triggers observe a game-time cooldown; urgent
+new evidence may bypass it. Defaults cap one process at 20 decisions, two
+immediate recovery follow-ups, three completed no-progress attempts for the same
+problem, and USD 5 of calculable session spend. Override these with
+`--max-decisions`, `--max-immediate-followups`, `--max-problem-attempts`,
+`--cooldown-ticks`, or `--max-session-spend`. A conclusive safety halt issues
+one pause command and requires a human to restart autonomy. Ctrl+C stops the
+scheduler without changing game speed.
+
 For a deliberately bounded development test sequence:
 
 ```bash
