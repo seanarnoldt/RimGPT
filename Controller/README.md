@@ -403,6 +403,21 @@ Every write remains a queued bridge command followed by an authoritative state
 refresh. A command result is only a compact acknowledgement, never the source
 of truth for current colony state.
 
+## Passive Observer
+
+The M11.1 observer polls authoritative state without running a model or issuing
+commands:
+
+```bash
+python observe.py
+```
+
+Use `--interval` to change the default two-second wall-clock polling interval
+and `--review-ticks` to change the default 30,000-game-tick strategic review
+cadence. Observations, review timing, and trigger fingerprints exist only in
+memory. Existing colony-scoped handoff, stall, and risk artifacts are read as
+context but are never rewritten by the observer. Stop it with Ctrl+C.
+
 ## Decision Continuity
 
 RimGPT stores a compact `previousDecision` handoff separately from current
