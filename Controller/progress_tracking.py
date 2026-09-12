@@ -514,12 +514,9 @@ def authoritative_completion_for(item: dict[str, Any], progress: dict[str, Any])
 
     growing = completion.get("growing") if isinstance(completion.get("growing"), dict) else {}
     zones = dict_list(growing.get("zones"))
-    matched_zones = [
-        zone for zone in zones
-        if normalize_identifier(zone.get("id")) in normalize_identifier(text)
-        or normalize_identifier(zone.get("plantDef")) in normalize_identifier(text)
-    ]
-    relevant_zones = matched_zones or zones
+    matched_zones = matching_growing_zones(text, zones)
+    specific_growing_target = growing_objective_is_specific(text)
+    relevant_zones = matched_zones if specific_growing_target else zones
     if (
         "growing" in categories
         and "harvest" not in text
@@ -532,9 +529,9 @@ def authoritative_completion_for(item: dict[str, Any], progress: dict[str, Any])
 
     construction = completion.get("construction") if isinstance(completion.get("construction"), dict) else {}
     shelter = completion.get("shelter") if isinstance(completion.get("shelter"), dict) else {}
-    if "room" in categories and integer(shelter.get("enclosedRoofedRooms")) > 0:
+    if "room" in categories and generic_shelter_objective(text) and integer(shelter.get("enclosedRoofedRooms")) > 0:
         evidence.append("an enclosed substantially roofed room is authoritatively present")
-    if "beds" in categories and integer(shelter.get("missingBeds")) == 0:
+    if "beds" in categories and aggregate_sleep_capacity_objective(text) and integer(shelter.get("missingBeds")) == 0:
         evidence.append("usable bed capacity meets current colonist count")
     completed_defs = [str(entry.get("defName")) for entry in dict_list(construction.get("completedByDef"))]
     pending_defs = {str(entry.get("defName")) for entry in dict_list(construction.get("pendingByDef"))}
@@ -578,7 +575,7 @@ def loop_categories(loop: dict[str, Any]) -> set[str]:
     text = normalized_domain_text(loop)
     categories = set()
     keyword_groups = {
-        "room": ("room", "enclos", "roof", "temperature", "cooler", "heater", "shelter"),
+        "room": ("room", "enclos", "roof", "temperature", "shelter"),
         "construction": ("build", "wall", "blueprint", "frame", "construct"),
         "designation": ("designat", "mine", "harvest", "cut"),
         "blocker": ("block", "prerequisite"),
@@ -586,7 +583,7 @@ def loop_categories(loop: dict[str, Any]) -> set[str]:
         "growing": ("grow", "plant", "sow", "crop", "field"),
         "research": ("research",),
         "hauling": ("haul", "stockpile", "storage"),
-        "beds": ("bed", "sleeping spot"),
+        "beds": ("bed", "sleep"),
     }
     for category, keywords in keyword_groups.items():
         if any(keyword in text for keyword in keywords):
@@ -629,6 +626,53 @@ def growing_zone_summary(zone: dict[str, Any]) -> dict[str, Any]:
         "plantingComplete": zone.get("plantingComplete") is True,
         "state": growing_phase(zone),
     }
+
+
+def matching_growing_zones(text: str, zones: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    normalized_text = normalize_identifier(text)
+    return [
+        zone for zone in zones
+        if any(
+            normalized and normalized in normalized_text
+            for normalized in (
+                normalize_identifier(zone.get("id")),
+                normalize_identifier(zone.get("plantDef")),
+                crop_name_from_def(zone.get("plantDef")),
+            )
+        )
+    ]
+
+
+def growing_objective_is_specific(text: str) -> bool:
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    generic_words = {
+        "a", "an", "and", "appropriate", "crop", "crops", "create", "establish", "farm", "farming",
+        "field", "fields", "food", "for", "grow", "growing", "maintain", "of", "plant", "planting",
+        "renewable", "sow", "sowing", "the", "to", "zone", "zones",
+    }
+    return any(word not in generic_words for word in words)
+
+
+def crop_name_from_def(value: Any) -> str:
+    normalized = normalize_identifier(value)
+    return normalized[5:] if normalized.startswith("plant") else normalized
+
+
+def aggregate_sleep_capacity_objective(text: str) -> bool:
+    normalized = " ".join(text.lower().split())
+    aggregate_terms = ("all ", "each ", "every ", "enough ", "adequate ", "capacity")
+    sleep_terms = ("bed", "sleep")
+    return any(term in normalized for term in aggregate_terms) and any(term in normalized for term in sleep_terms)
+
+
+def generic_shelter_objective(text: str) -> bool:
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    shelter_words = {"enclose", "enclosed", "enclosure", "roof", "roofed", "room", "rooms", "shelter", "shelters"}
+    generic_words = shelter_words | {
+        "a", "an", "and", "build", "complete", "create", "finish", "for", "indoor", "indoors", "make",
+        "of", "safe", "starter", "temperature", "the", "to", "usable",
+    }
+    return bool(shelter_words.intersection(words)) and all(word in generic_words for word in words)
 
 
 def room_is_completed_shelter(room: dict[str, Any] | None) -> bool:
