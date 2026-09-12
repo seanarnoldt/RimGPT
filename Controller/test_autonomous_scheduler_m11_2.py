@@ -1,5 +1,6 @@
 import copy
 import unittest
+from types import SimpleNamespace
 
 from agent_controller import SYSTEM_INSTRUCTIONS
 from autonomous_scheduler import AutonomousScheduler, SchedulerConfig
@@ -63,9 +64,11 @@ class FakeObserver:
 
 
 class FakeController:
-    def __init__(self, outcomes):
+    def __init__(self, outcomes, *, pricing_available=True):
         self.outcomes = list(outcomes)
         self.calls = []
+        self.pricing = SimpleNamespace(base_configured=pricing_available)
+        self.max_model_requests_per_cycle = 8
 
     def run_once(self, trigger):
         self.calls.append(copy.deepcopy(trigger))
@@ -88,6 +91,8 @@ def scheduler(observations, outcomes=(), **config):
     observer = FakeObserver(observations)
     controller = FakeController(outcomes)
     bridge = FakeBridge()
+    config.setdefault("verification_grace_ticks", 1)
+    config.setdefault("urgent_verification_grace_ticks", 1)
     value = AutonomousScheduler(
         observer, controller, bridge,
         config=SchedulerConfig(**config),
@@ -120,7 +125,7 @@ class AutonomousSchedulerM112Tests(unittest.TestCase):
         value, _, controller, _ = scheduler(observations, [outcome(), outcome(ticks=1003)])
         value.step()
         self.assertEqual(value.step().status, "observed")
-        self.assertEqual(value.step().status, "recovery_pending")
+        self.assertEqual(value.step().status, "verification_pending")
         self.assertEqual(len(controller.calls), 2)
 
     def test_normal_trigger_waits_for_game_tick_cooldown(self):
@@ -189,7 +194,7 @@ class AutonomousSchedulerM112Tests(unittest.TestCase):
         value, _, controller, _ = scheduler(
             [(trigger, state()), (no_trigger(1001), state(1001))], [outcome()]
         )
-        self.assertEqual(value.step().status, "recovery_pending")
+        self.assertEqual(value.step().status, "verification_pending")
         self.assertEqual(next(iter(value._problem_attempts.values())), 1)
         self.assertEqual(controller.calls[0]["recoveryAttempt"], 0)
 
@@ -200,14 +205,15 @@ class AutonomousSchedulerM112Tests(unittest.TestCase):
             trigger.ticks_game, {"capableIdleColonists": 1, "capableIdlePawnIds": ["Pawn_0"]},
         )
         observations = []
-        for tick in range(1000, 1006):
+        for tick in range(1000, 1007):
             observations.append((no_trigger(tick) if tick % 2 else trigger, state(tick, idle=1)))
         observations[0] = (trigger, state(1000, idle=1))
         value, _, controller, bridge = scheduler(
             observations, [outcome(ticks=1001), outcome(ticks=1003), outcome(ticks=1005)]
         )
-        self.assertEqual(value.step().status, "recovery_pending")
-        self.assertEqual(value.step().status, "recovery_pending")
+        self.assertEqual(value.step().status, "verification_pending")
+        self.assertEqual(value.step().status, "verification_pending")
+        self.assertEqual(value.step().status, "verification_pending")
         self.assertEqual(value.step().status, "halted")
         self.assertEqual([call["recoveryAttempt"] for call in controller.calls], [0, 2, 3])
         self.assertEqual(controller.calls[0]["capableIdlePawnIds"], ["Pawn_0"])
@@ -307,6 +313,7 @@ class AutonomousSchedulerM112Tests(unittest.TestCase):
             config=SchedulerConfig(max_problem_attempts=1), logger=logs.append,
         )
         self.assertEqual(value.step().status, "halted")
+        self.assertEqual(value.halt_reason, "session_cost_unavailable")
         self.assertIn("sessionCost=unavailable", logs)
         self.assertEqual(len(bridge.pause_calls), 1)
 

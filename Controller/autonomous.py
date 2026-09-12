@@ -15,11 +15,15 @@ from autonomous_scheduler import (
     DEFAULT_MAX_IMMEDIATE_FOLLOWUPS,
     DEFAULT_MAX_PROBLEM_ATTEMPTS,
     DEFAULT_MAX_SESSION_SPEND,
+    DEFAULT_MAX_SESSION_MODEL_REQUESTS,
     DEFAULT_NORMAL_COOLDOWN_TICKS,
+    DEFAULT_URGENT_VERIFICATION_GRACE_TICKS,
+    DEFAULT_VERIFICATION_GRACE_TICKS,
     AutonomousScheduler,
     SchedulerConfig,
 )
 from bridge import RimWorldBridge, RimWorldBridgeError
+from context_telemetry import Pricing
 from decision_trigger import (
     DEFAULT_IDLE_PERSISTENCE_TICKS,
     DEFAULT_REVIEW_INTERVAL_TICKS,
@@ -42,11 +46,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-decisions", type=int, default=DEFAULT_MAX_AUTONOMOUS_DECISIONS)
     parser.add_argument("--max-immediate-followups", type=int, default=DEFAULT_MAX_IMMEDIATE_FOLLOWUPS)
     parser.add_argument("--max-problem-attempts", type=int, default=DEFAULT_MAX_PROBLEM_ATTEMPTS)
+    parser.add_argument("--verification-grace-ticks", type=int, default=DEFAULT_VERIFICATION_GRACE_TICKS)
+    parser.add_argument(
+        "--urgent-verification-grace-ticks",
+        type=int,
+        default=DEFAULT_URGENT_VERIFICATION_GRACE_TICKS,
+    )
+    parser.add_argument(
+        "--max-session-model-requests",
+        type=int,
+        default=int(os.environ.get("RIMGPT_MAX_SESSION_MODEL_REQUESTS", DEFAULT_MAX_SESSION_MODEL_REQUESTS)),
+    )
     parser.add_argument(
         "--max-session-spend",
         type=float,
         default=float(os.environ.get("RIMGPT_MAX_SESSION_SPEND", DEFAULT_MAX_SESSION_SPEND)),
         help="Maximum calculable API spend in USD for this autonomous process",
+    )
+    parser.add_argument(
+        "--allow-unpriced-session",
+        action="store_true",
+        help="Explicitly allow autonomy without dollar telemetry; request and decision caps still apply",
     )
     return parser.parse_args()
 
@@ -57,6 +77,7 @@ def main() -> int:
     for name in (
         "interval", "review_ticks", "idle_persistence_ticks", "cooldown_ticks",
         "max_decisions", "max_immediate_followups", "max_problem_attempts", "max_session_spend",
+        "max_session_model_requests", "verification_grace_ticks", "urgent_verification_grace_ticks",
     ):
         if getattr(args, name) <= 0:
             print(f"[ERROR] --{name.replace('_', '-')} must be positive")
@@ -65,13 +86,26 @@ def main() -> int:
         print("[ERROR] OPENAI_API_KEY is not set")
         return 2
 
+    pricing = Pricing.from_environment()
+    if args.max_session_spend is not None and not pricing.base_configured and not args.allow_unpriced_session:
+        print(
+            "[ERROR] Autonomous spend cap requires calculable pricing. Configure "
+            "RIMGPT_INPUT_COST_PER_MILLION and RIMGPT_OUTPUT_COST_PER_MILLION, or explicitly "
+            "pass --allow-unpriced-session."
+        )
+        return 2
+
     bridge = RimWorldBridge(args.bridge_url)
     evaluator = TriggerEvaluator(
         review_interval_ticks=args.review_ticks,
         idle_persistence_ticks=args.idle_persistence_ticks,
     )
     observer = StateObserver(bridge, evaluator)
-    controller = AgentController(bridge=bridge, model=os.environ.get("RIMGPT_MODEL", DEFAULT_MODEL))
+    controller = AgentController(
+        bridge=bridge,
+        model=os.environ.get("RIMGPT_MODEL", DEFAULT_MODEL),
+        pricing=pricing,
+    )
     scheduler = AutonomousScheduler(
         observer,
         controller,
@@ -82,6 +116,10 @@ def main() -> int:
             max_immediate_followups=args.max_immediate_followups,
             max_problem_attempts=args.max_problem_attempts,
             max_session_spend=args.max_session_spend,
+            max_session_model_requests=args.max_session_model_requests,
+            verification_grace_ticks=args.verification_grace_ticks,
+            urgent_verification_grace_ticks=args.urgent_verification_grace_ticks,
+            allow_unpriced_session=args.allow_unpriced_session,
         ),
     )
     print("[AUTONOMY] Scheduler started; Ctrl+C stops without changing game speed")

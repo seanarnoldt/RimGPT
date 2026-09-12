@@ -83,8 +83,15 @@ new evidence may bypass it. Defaults cap one process at 20 decisions, two
 immediate recovery follow-ups, three completed no-progress attempts for the same
 problem, and USD 5 of calculable session spend. Override these with
 `--max-decisions`, `--max-immediate-followups`, `--max-problem-attempts`,
-`--cooldown-ticks`, or `--max-session-spend`. A conclusive safety halt issues
-one pause command and requires a human to restart autonomy. Ctrl+C stops the
+`--cooldown-ticks`, `--max-session-spend`, or `--max-session-model-requests`.
+Successful recoverable decisions receive an observation-only game-tick grace
+period before another model attempt (1,500 ticks normally and 250 for urgent
+problems). A separate hard ceiling allows at most 80 model requests per session.
+Autonomous startup with a dollar cap
+requires configured input/output pricing; `--allow-unpriced-session` is an
+explicit opt-in that retains the hard request and decision ceilings. A
+conclusive safety halt issues one pause command and requires a human to restart
+autonomy. Ctrl+C stops the
 scheduler without changing game speed.
 
 For a deliberately bounded development test sequence:
