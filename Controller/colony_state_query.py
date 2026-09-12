@@ -87,12 +87,17 @@ class ColonyStateQuery:
 
     def _resources(self, state: dict[str, Any]) -> tuple[Any, bool]:
         resources = state.get("resources") if isinstance(state.get("resources"), dict) else {}
+        colony = state.get("colony") if isinstance(state.get("colony"), dict) else {}
         data: dict[str, Any] = {}
         for key in ("available", "forbidden", "totalVisible", "stored"):
             if key in resources:
                 data[key] = compact_tree(resources[key], max_list=50, max_depth=4)
         if not data:
             data = compact_tree(resources, max_list=50, max_depth=4)
+        if isinstance(colony.get("wealth"), dict):
+            data["wealth"] = select_fields(
+                colony["wealth"], ("total", "itemValue", "buildingValue", "pawnValue")
+            )
         return data, contains_truncation(data)
 
     def _research(self, state: dict[str, Any]) -> tuple[Any, bool]:

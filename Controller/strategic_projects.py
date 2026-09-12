@@ -179,6 +179,11 @@ def build_work_continuity(
         "background": background[:MAX_ATTENTION_ITEMS],
         "attention": attention[:MAX_ATTENTION_ITEMS],
         "capableIdleColonists": capable_idle,
+        "capableIdlePawnIds": [
+            str(item.get("id"))
+            for item in dict_list(labor.get("capableIdleColonists"))[:20]
+            if item.get("id")
+        ],
         "availableProjectTasks": available_tasks,
         "parallelWorkRecommended": (
             not bool(operational_risk.get("interruptNormalPriorities"))

@@ -61,6 +61,12 @@ namespace RimGPT
             WriteIntField(json, "colonistCount", colony.ColonistCount, false);
             WriteIntField(json, "prisonerCount", colony.PrisonerCount, true);
             WriteIntField(json, "animalCount", colony.AnimalCount, true);
+            json.Append(",\"wealth\":{");
+            WriteIntField(json, "total", colony.Wealth != null ? colony.Wealth.Total : 0, false);
+            WriteIntField(json, "itemValue", colony.Wealth != null ? colony.Wealth.Items : 0, true);
+            WriteIntField(json, "buildingValue", colony.Wealth != null ? colony.Wealth.Buildings : 0, true);
+            WriteIntField(json, "pawnValue", colony.Wealth != null ? colony.Wealth.Pawns : 0, true);
+            json.Append("}");
             json.Append("}");
         }
 

@@ -42,6 +42,15 @@ namespace RimGPT
         public int ColonistCount;
         public int PrisonerCount;
         public int AnimalCount;
+        public RimGPTWealthState Wealth;
+    }
+
+    public sealed class RimGPTWealthState
+    {
+        public int Total;
+        public int Items;
+        public int Buildings;
+        public int Pawns;
     }
 
     public sealed class RimGPTColonistState

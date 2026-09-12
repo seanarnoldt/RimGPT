@@ -418,6 +418,13 @@ cadence. Observations, review timing, and trigger fingerprints exist only in
 memory. Existing colony-scoped handoff, stall, and risk artifacts are read as
 context but are never rewritten by the observer. Stop it with Ctrl+C.
 
+Compact strategic context includes the current map's vanilla colony-wealth
+breakdown and an intentionally approximate food runway. Food days are available
+nutrition divided by `1.6 * colonistCount`; the estimate does not forecast crop
+yields, spoilage, hunting, or future consumption changes. Capable idle pawn IDs
+remain separate from available project work so the model can reason about spare
+productive capacity without a deterministic work policy.
+
 ## Decision Continuity
 
 RimGPT stores a compact `previousDecision` handoff separately from current

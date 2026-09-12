@@ -19,6 +19,7 @@ from strategic_projects import build_project_context
 CONTEXT_VERSION = 1
 DEFAULT_MAX_BOOTSTRAP_CHARS = 14_000
 DEFAULT_MAX_BOOTSTRAP_PAWNS = 20
+NUTRITION_PER_COLONIST_DAY = 1.6
 
 
 class DecisionContextError(RuntimeError):
@@ -160,6 +161,10 @@ def build_current_summary(state: dict[str, Any]) -> dict[str, Any]:
         },
     }
 
+    wealth = wealth_summary(state)
+    if wealth is not None:
+        result["wealth"] = wealth
+
     awareness = awareness_summary(state)
     if awareness is not None:
         result["awareness"] = awareness
@@ -210,6 +215,11 @@ def labor_summary(state: dict[str, Any]) -> dict[str, Any] | None:
     return {
         "idleColonists": labor.get("idleColonistCount"),
         "capableIdleColonists": labor.get("capableIdleColonistCount"),
+        "capableIdlePawnIds": [
+            str(item.get("id"))
+            for item in dict_list(labor.get("capableIdleColonists"))[:20]
+            if item.get("id")
+        ],
         "pendingWork": copy.deepcopy(labor.get("pendingWork")),
         "obviousBlockers": copy.deepcopy(dict_list(labor.get("obviousBlockers"))[:12]),
     }
@@ -420,7 +430,18 @@ def food_summary(state: dict[str, Any], colonist_count: int) -> dict[str, Any]:
         status = "adequate"
     else:
         status = "abundant"
-    return {"status": status, "meals": meals}
+    estimated_days = None
+    if colonist_count > 0:
+        estimated_days = round(nutrition / (colonist_count * NUTRITION_PER_COLONIST_DAY), 1)
+    return {"status": status, "meals": meals, "estimatedFoodDays": estimated_days}
+
+
+def wealth_summary(state: dict[str, Any]) -> dict[str, Any] | None:
+    colony = state.get("colony") if isinstance(state.get("colony"), dict) else {}
+    wealth = colony.get("wealth") if isinstance(colony.get("wealth"), dict) else None
+    if wealth is None:
+        return None
+    return select_fields(wealth, ("total", "itemValue", "buildingValue", "pawnValue"))
 
 
 def power_summary(state: dict[str, Any]) -> dict[str, Any] | None:

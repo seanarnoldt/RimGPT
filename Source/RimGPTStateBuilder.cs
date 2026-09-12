@@ -78,7 +78,23 @@ namespace RimGPT
             colony.ColonistCount = SafeCount(delegate { return map.mapPawns.FreeColonistsSpawned.Count; });
             colony.PrisonerCount = SafeCount(delegate { return map.mapPawns.PrisonersOfColonySpawned.Count; });
             colony.AnimalCount = SafeCount(delegate { return map.mapPawns.SpawnedColonyAnimals.Count; });
+            colony.Wealth = BuildWealthState(map);
             return colony;
+        }
+
+        private static RimGPTWealthState BuildWealthState(Map map)
+        {
+            RimGPTWealthState wealth = new RimGPTWealthState();
+            if (map.wealthWatcher == null)
+            {
+                return wealth;
+            }
+
+            wealth.Total = SafeInt(delegate { return Mathf.RoundToInt(map.wealthWatcher.WealthTotal); });
+            wealth.Items = SafeInt(delegate { return Mathf.RoundToInt(map.wealthWatcher.WealthItems); });
+            wealth.Buildings = SafeInt(delegate { return Mathf.RoundToInt(map.wealthWatcher.WealthBuildings); });
+            wealth.Pawns = SafeInt(delegate { return Mathf.RoundToInt(map.wealthWatcher.WealthPawns); });
+            return wealth;
         }
 
         private static List<RimGPTColonistState> BuildColonists(Map map)

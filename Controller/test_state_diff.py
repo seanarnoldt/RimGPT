@@ -41,7 +41,12 @@ def base_state(version=120, ticks=1000, lineage="lineage-a", schema=2):
         "schemaVersion": schema,
         "snapshot": {"version": version, "ticksGame": ticks, "capturedAtUtc": "2026-01-01T00:00:00Z"},
         "game": {"loaded": True, "paused": False, "speed": 1, "ticksGame": ticks, "currentMapId": "map-7", "colonyLineageId": lineage},
-        "colony": {"colonistCount": 1, "prisonerCount": 0, "animalCount": 0},
+        "colony": {
+            "colonistCount": 1,
+            "prisonerCount": 0,
+            "animalCount": 0,
+            "wealth": {"total": 18432, "itemValue": 7200, "buildingValue": 6400, "pawnValue": 4832},
+        },
         "resources": {
             "wood": 180,
             "steel": 450,
