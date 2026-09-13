@@ -195,7 +195,7 @@ class AutonomousContextHeadroomTests(unittest.TestCase):
             context_payload=context,
             full_state_sent=False,
         )
-        self.assertEqual(unreduced.estimated_input_tokens, 33_380)
+        self.assertGreater(unreduced.estimated_input_tokens, 30_000)
 
         fitted = self.controller._fit_continuation_headroom(outputs, calls, post_state, context)
         map_payload = json.loads(fitted[-1]["output"])

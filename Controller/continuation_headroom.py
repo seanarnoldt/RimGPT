@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 
 DEFAULT_FINALIZATION_HEADROOM_TOKENS = 2_000
+SMALL_ACTION_CRITICAL_RESULT_CHARS = 1_600
 
 _CATALOG_TOOLS = {
     "list_build_options",
@@ -32,6 +33,8 @@ def fit_read_results(
     tool_calls: list[Any],
     estimate_tokens: Callable[[list[dict[str, Any]]], int],
     target_tokens: int,
+    *,
+    preserve_action_critical: bool = False,
 ) -> tuple[list[dict[str, Any]], list[HeadroomReduction], int]:
     """Reduce successful broad reads until the prospective request fits."""
     fitted = copy.deepcopy(outputs)
@@ -46,7 +49,7 @@ def fit_read_results(
     if estimated <= target_tokens:
         return fitted, [], estimated
 
-    candidates: list[tuple[int, int, str, str, dict[str, Any]]] = []
+    candidates: list[tuple[int, int, int, str, str, str]] = []
     for index, output in enumerate(fitted):
         if output.get("type") != "function_call_output":
             continue
@@ -57,13 +60,23 @@ def fit_read_results(
         payload = _payload(output)
         if payload is None or payload.get("success") is not True:
             continue
-        candidates.append((len(str(output.get("output") or "")), index, tool, call_id, arguments))
-
-    candidates.sort(key=lambda item: (item[0], item[2] == "inspect_map"), reverse=True)
-    reductions: list[HeadroomReduction] = []
-    for before_chars, index, tool, call_id, arguments in candidates:
-        replacement = _bounded_result(tool, _payload(fitted[index]) or {}, arguments)
+        before_chars = len(str(output.get("output") or ""))
+        if is_action_critical_read(tool, arguments) and (
+            preserve_action_critical or before_chars <= SMALL_ACTION_CRITICAL_RESULT_CHARS
+        ):
+            continue
+        replacement = _bounded_result(tool, payload, arguments)
         encoded = json.dumps(replacement, separators=(",", ":"), ensure_ascii=True)
+        if len(encoded) >= before_chars:
+            continue
+        priority = _reduction_priority(tool, arguments)
+        savings = before_chars - len(encoded)
+        candidates.append((priority, -savings, index, tool, call_id, encoded))
+
+    candidates.sort()
+    reductions: list[HeadroomReduction] = []
+    for _, _, index, tool, call_id, encoded in candidates:
+        before_chars = len(str(fitted[index].get("output") or ""))
         fitted[index]["output"] = encoded
         reductions.append(HeadroomReduction(tool, call_id, before_chars, len(encoded)))
         estimated = estimate_tokens(fitted)
@@ -79,43 +92,107 @@ def minimize_for_finalization(
     """Drop action references after the tool surface has become terminal-only."""
     minimized = copy.deepcopy(outputs)
     calls = {
-        str(getattr(call, "call_id", "")): str(getattr(call, "name", ""))
+        str(getattr(call, "call_id", "")): (
+            str(getattr(call, "name", "")),
+            _arguments(getattr(call, "arguments", "{}")),
+        )
         for call in tool_calls
     }
     for output in minimized:
         if output.get("type") != "function_call_output":
             continue
-        tool = calls.get(str(output.get("call_id") or ""), "")
+        tool, arguments = calls.get(str(output.get("call_id") or ""), ("", {}))
         payload = _payload(output)
-        if tool == "inspect_map" and isinstance(payload, dict) and payload.get("reason") == "contextHeadroomExceeded":
+        if tool == "inspect_map" and isinstance(payload, dict) and (
+            payload.get("success") is True or payload.get("reason") == "contextHeadroomExceeded"
+        ):
+            bounds = _map_bounds(payload, arguments)
             marker = {
                 "success": False,
                 "reason": "contextHeadroomExceeded",
-                "requestedBounds": copy.deepcopy(payload.get("requestedBounds")),
-                "requestedCellCount": payload.get("requestedCellCount"),
+                "requestedBounds": bounds,
+                "requestedCellCount": _cell_count(bounds),
                 "geometryIncluded": False,
                 "partialGeometry": False,
                 "requerySmallerRegion": True,
+                "controllerLimited": True,
+                "authoritativeGameplayBlocker": False,
                 "truncated": True,
             }
-            output["output"] = json.dumps(marker, separators=(",", ":"), ensure_ascii=True)
+            _replace_if_smaller(output, marker)
             continue
-        if tool not in (_CATALOG_TOOLS | {"get_colony_state"}):
+        if tool not in _REDUCIBLE_READ_TOOLS:
             continue
-        if payload is None or payload.get("success") is not True or payload.get("resultReduced") is not True:
+        if payload is None or payload.get("success") is not True:
             continue
         marker = {
-            "success": True,
-            "resultReduced": True,
-            "reason": "contextHeadroomReservedForFinalization",
+            "success": False,
+            "reason": "controllerContextLimit",
             "tool": tool,
+            "controllerLimited": True,
+            "authoritativeGameplayBlocker": False,
+            "resultWithheldForFinalization": True,
             "truncated": True,
         }
         for field in ("section", "snapshotVersion", "count", "totalCount", "category", "search"):
             if payload.get(field) is not None:
                 marker[field] = copy.deepcopy(payload[field])
-        output["output"] = json.dumps(marker, separators=(",", ":"), ensure_ascii=True)
+            elif arguments.get(field) is not None:
+                marker[field] = copy.deepcopy(arguments[field])
+        _replace_if_smaller(output, marker)
     return minimized
+
+
+def has_exact_action_critical_result(outputs: list[dict[str, Any]], tool_calls: list[Any]) -> bool:
+    calls = {
+        str(getattr(call, "call_id", "")): (
+            str(getattr(call, "name", "")),
+            _arguments(getattr(call, "arguments", "{}")),
+        )
+        for call in tool_calls
+    }
+    for output in outputs:
+        tool, arguments = calls.get(str(output.get("call_id") or ""), ("", {}))
+        payload = _payload(output)
+        if (
+            is_action_critical_read(tool, arguments)
+            and payload is not None
+            and payload.get("success") is True
+            and payload.get("resultReduced") is not True
+        ):
+            return True
+    return False
+
+
+def is_action_critical_read(tool: str, arguments: dict[str, Any]) -> bool:
+    if tool == "get_build_info":
+        return True
+    if tool == "list_build_options":
+        return bool(str(arguments.get("search") or "").strip())
+    if tool == "list_recipes":
+        return bool(str(arguments.get("worktable_id") or "").strip())
+    if tool == "get_colony_state":
+        return str(arguments.get("section") or "").lower() in {"research", "equipment", "apparel"}
+    return False
+
+
+def _reduction_priority(tool: str, arguments: dict[str, Any]) -> int:
+    if tool == "inspect_map":
+        return 0
+    if tool in _CATALOG_TOOLS and not is_action_critical_read(tool, arguments):
+        return 1
+    if tool == "get_colony_state" and not is_action_critical_read(tool, arguments):
+        return 2
+    return 3
+
+
+def _replace_if_smaller(output: dict[str, Any], replacement: dict[str, Any]) -> bool:
+    before = str(output.get("output") or "")
+    encoded = json.dumps(replacement, separators=(",", ":"), ensure_ascii=True)
+    if len(encoded) >= len(before):
+        return False
+    output["output"] = encoded
+    return True
 
 
 def _bounded_result(tool: str, payload: dict[str, Any], arguments: dict[str, Any]) -> dict[str, Any]:
@@ -130,6 +207,8 @@ def _bounded_result(tool: str, payload: dict[str, Any], arguments: dict[str, Any
             "geometryIncluded": False,
             "partialGeometry": False,
             "requerySmallerRegion": True,
+            "controllerLimited": True,
+            "authoritativeGameplayBlocker": False,
             "truncated": True,
         }
 

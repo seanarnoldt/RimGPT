@@ -22,6 +22,7 @@ from context_telemetry import (
 from continuation_headroom import (
     DEFAULT_FINALIZATION_HEADROOM_TOKENS,
     fit_read_results,
+    has_exact_action_critical_result,
     minimize_for_finalization,
 )
 from decision_context import DecisionContextBuilder, build_current_summary, serialize_context
@@ -156,6 +157,8 @@ Successful batch and validator results summarize successes and list only failure
 
 When a read result reports contextHeadroomExceeded, no partial spatial geometry was supplied. Re-query a materially smaller region only if it is essential; otherwise act from existing evidence or finish the decision. When resultReduced=true, use retained references and avoid repeating the same broad read during this decision.
 
+When a read result reports controllerContextLimit or authoritativeGameplayBlocker=false, context management withheld that detail; it is not evidence of a gameplay blocker. Preserve the strategic intent and retry narrowly in a later decision only if still needed.
+
 The controller automatically supplies a compact authoritative post-tool state update. Do not re-query a colony-state section only to confirm a successful command unless the next decision requires exact details from that section.
 
 Do not assume every visually open cell can support every structure.
@@ -242,6 +245,7 @@ class AgentController:
         self.terminal_decision_finished = False
         self._last_presented_tool_names: set[str] | None = None
         self._context_finalization_only = False
+        self._context_action_only = False
         if not self.pricing.base_configured:
             print(
                 "[COST] calculation disabled: configure "
@@ -483,7 +487,24 @@ class AgentController:
                 carried_context_chars=self.carried_context_chars,
             ).estimated_input_tokens
 
-        fitted, reductions, estimated = fit_read_results(outputs, tool_calls, estimate, target)
+        if self._context_finalization_only:
+            fitted = minimize_for_finalization(outputs, tool_calls)
+            estimated = estimate(fitted)
+            reserve_unachievable = estimated > target
+            print(
+                "[HEADROOM] "
+                f"finalizationOnly=true estimatedInputTokens={estimated} targetTokens={target} "
+                f"headroomReserveUnachievable={str(reserve_unachievable).lower()}"
+            )
+            return fitted
+
+        fitted, reductions, estimated = fit_read_results(
+            outputs,
+            tool_calls,
+            estimate,
+            target,
+            preserve_action_critical=True,
+        )
         for reduction in reductions:
             print(
                 "[HEADROOM] "
@@ -493,12 +514,55 @@ class AgentController:
             )
 
         if estimated > target:
+            remaining = self.max_model_requests_per_cycle - self.model_request_count
+            if remaining >= 2 and has_exact_action_critical_result(fitted, tool_calls):
+                self._context_action_only = True
+                action_estimated = estimate(fitted)
+                if action_estimated <= target:
+                    print(
+                        "[HEADROOM] "
+                        f"actionOnly=true estimatedInputTokens={action_estimated} targetTokens={target} "
+                        "finalizationReserved=true"
+                    )
+                    return fitted
+                self._context_action_only = False
+
+            fitted, extra_reductions, estimated = fit_read_results(
+                fitted,
+                tool_calls,
+                estimate,
+                target,
+            )
+            for reduction in extra_reductions:
+                print(
+                    "[HEADROOM] "
+                    f"tool={reduction.tool} callId={reduction.call_id} "
+                    f"beforeChars={reduction.before_chars} afterChars={reduction.after_chars} "
+                    f"targetTokens={target}"
+                )
+
+        if estimated > target:
+            remaining = self.max_model_requests_per_cycle - self.model_request_count
+            if remaining >= 2:
+                self._context_action_only = True
+                action_estimated = estimate(fitted)
+                if action_estimated <= target:
+                    print(
+                        "[HEADROOM] "
+                        f"actionOnly=true estimatedInputTokens={action_estimated} targetTokens={target} "
+                        "finalizationReserved=true"
+                    )
+                    return fitted
+                self._context_action_only = False
+
             self._context_finalization_only = True
             fitted = minimize_for_finalization(fitted, tool_calls)
             estimated = estimate(fitted)
+            reserve_unachievable = estimated > target
             print(
                 "[HEADROOM] "
-                f"finalizationOnly=true estimatedInputTokens={estimated} targetTokens={target}"
+                f"finalizationOnly=true estimatedInputTokens={estimated} targetTokens={target} "
+                f"headroomReserveUnachievable={str(reserve_unachievable).lower()}"
             )
         return fitted
 
@@ -752,6 +816,7 @@ class AgentController:
         self.terminal_decision_finished = False
         self._last_presented_tool_names = None
         self._context_finalization_only = False
+        self._context_action_only = False
         self._get_active_tools().reset()
         self.dry_run_proposals = DryRunProposalLedger() if getattr(self, "dry_run", False) else None
 
@@ -825,6 +890,15 @@ class AgentController:
         schemas = self._get_active_tools().schemas()
         if getattr(self, "_context_finalization_only", False):
             return [schema for schema in schemas if schema.get("name") == "finish_decision"], "context-finalization-only"
+        if getattr(self, "_context_action_only", False):
+            immediate = []
+            for schema in schemas:
+                registration = self.tool_registry.registration(str(schema.get("name") or ""))
+                if schema.get("name") == "finish_decision" or (
+                    registration is not None and not registration.read_only
+                ):
+                    immediate.append(schema)
+            return immediate, "context-action-only"
         if remaining <= 1:
             return [schema for schema in schemas if schema.get("name") == "finish_decision"], "finalization-only"
         if remaining == 2:
@@ -1036,6 +1110,10 @@ class AgentController:
         self.model_request_count = request_number
         response = self.client.responses.create(**request)
         self._last_presented_tool_names = {str(schema.get("name")) for schema in active_tools}
+        if tool_mode == "context-action-only":
+            self._context_action_only = False
+            self._context_finalization_only = True
+            print("[HEADROOM] actionRoundConsumed=true nextRequestFinalizationOnly=true")
         self.previous_response_id = getattr(response, "id", None)
         # A continuation references prior Responses output server-side. Track
         # the response payload we can observe so its growth remains visible to
