@@ -181,7 +181,7 @@ class AutonomousContextHeadroomTests(unittest.TestCase):
         self.controller.compaction_count = 1
         self.controller.model_request_count = 5
         # Represents prior catalog/read continuation history already carried by Responses.
-        self.controller.carried_context_chars = 45_351
+        self.controller.carried_context_chars = 44_948
         calls, outputs, post_state, context = self.paid_shape()
         carried_before = self.controller.carried_context_chars
         unreduced_tools, _ = self.controller._request_tool_surface()
@@ -230,7 +230,7 @@ class AutonomousContextHeadroomTests(unittest.TestCase):
             self.controller._get_active_tools().enable(group)
         self.controller.compaction_count = 1
         self.controller.model_request_count = 5
-        self.controller.carried_context_chars = 70_000
+        self.controller.carried_context_chars = 69_600
         calls, outputs, post_state, context = self.paid_shape()
 
         fitted = self.controller._fit_continuation_headroom(outputs, calls, post_state, context)

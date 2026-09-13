@@ -138,6 +138,8 @@ Player-visible alerts, letters, and recent events in currentSummary.awareness ar
 
 Judge project completion only against its persisted success criteria and current authoritative state. Alert disappearance alone is insufficient. A single token action, such as one barricade, is progress toward a broader defense project rather than adequate defenses unless all stated criteria are actually satisfied.
 
+For an existing project ID, copy success_criteria exactly as persisted. Do not paraphrase or update them. If the strategic goal should change, explicitly resolve, cancel, or invalidate the old project and create a new project.
+
 For temperature-sensitive shelter, physical blueprint validity is not enough. Use inspect_room_at at an interior cell to verify that the occupied space is enclosed, indoors, substantially roofed, and uses room temperature before relying on a cooler, heater, bed, or workstation there.
 
 When a strategic goal is blocked, convert the blocker into an executable prerequisite using available tools, then preserve the parent goal as an open loop. For example, obtain visible resources, enable capable labor, or place a required generic work facility before expecting the parent work to proceed. Do not merely restate a known blocker across cycles.
@@ -1155,7 +1157,7 @@ class AgentController:
                 result = self._get_colony_state_result(arguments["section"])
             elif name == "finish_decision":
                 previous_handoff = self.state_store.get_decision_handoff()
-                result = prepare_handoff(arguments, previous_handoff)
+                result = prepare_handoff(arguments, previous_handoff, logger=print)
                 self.pending_decision_handoff = result
                 self.terminal_decision_finished = True
                 previous_ids = {

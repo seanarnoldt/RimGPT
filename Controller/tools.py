@@ -42,7 +42,7 @@ TOOLS: list[dict[str, Any]] = [
                 "projects": {
                     "type": "array",
                     "maxItems": 3,
-                    "description": "Active 1-3 day strategic projects. Retain prior projects/tasks by ID and update them in place.",
+                    "description": "Active 1-3 day strategic projects. Retain prior projects/tasks by ID and update them in place. For an existing project ID, copy success_criteria exactly as persisted; change the goal by resolving the old project and creating a new one.",
                     "items": {
                         "type": "object",
                         "properties": {
@@ -53,7 +53,7 @@ TOOLS: list[dict[str, Any]] = [
                             "success_criteria": {
                                 "type": "array", "minItems": 1, "maxItems": 4,
                                 "items": {"type": "string", "maxLength": 140},
-                                "description": "Meaningful authoritative criteria; alerts or one token action are not sufficient by themselves.",
+                                "description": "Meaningful authoritative criteria. For an existing project ID these must exactly copy persisted criteria; do not paraphrase them.",
                             },
                             "blockers": {
                                 "type": "array", "maxItems": 4,

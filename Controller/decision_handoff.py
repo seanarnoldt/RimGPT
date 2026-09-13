@@ -6,7 +6,7 @@ import copy
 import hashlib
 import json
 import re
-from typing import Any
+from typing import Any, Callable
 
 
 HANDOFF_SCHEMA_VERSION = 2
@@ -42,9 +42,16 @@ class DecisionHandoffError(ValueError):
     pass
 
 
-def prepare_handoff(arguments: dict[str, Any], previous: dict[str, Any] | None) -> dict[str, Any]:
+def prepare_handoff(
+    arguments: dict[str, Any],
+    previous: dict[str, Any] | None,
+    *,
+    logger: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
     if not isinstance(arguments, dict):
         raise DecisionHandoffError("finish_decision arguments must be an object")
+    prior = validate_handoff(previous) if previous is not None else empty_handoff()
+    arguments = normalize_retained_project_criteria(arguments, prior, logger)
     assessment = bounded_text(arguments.get("assessment"), "assessment", MAX_ASSESSMENT_CHARS, required=False)
     open_values = arguments.get("open_loops")
     resolution_values = arguments.get("resolved_loops")
@@ -53,7 +60,6 @@ def prepare_handoff(arguments: dict[str, Any], previous: dict[str, Any] | None) 
     if len(open_values) > MAX_OPEN_LOOPS or len(resolution_values) > MAX_OPEN_LOOPS:
         raise DecisionHandoffError(f"at most {MAX_OPEN_LOOPS} open loops and resolutions are allowed")
 
-    prior = validate_handoff(previous) if previous is not None else empty_handoff()
     prior_by_id = {item["id"]: item for item in prior["openLoops"]}
     prior_by_objective = {normalize_text(item["objective"]): item["id"] for item in prior["openLoops"]}
     retained: set[str] = set()
@@ -117,6 +123,44 @@ def prepare_handoff(arguments: dict[str, Any], previous: dict[str, Any] | None) 
         "projects": projects,
     }
     return validate_handoff(handoff)
+
+
+def normalize_retained_project_criteria(
+    arguments: dict[str, Any],
+    prior: dict[str, Any],
+    logger: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
+    """Restore immutable criteria only for explicitly retained known projects."""
+    normalized = copy.deepcopy(arguments)
+    raw_projects = normalized.get("projects")
+    if not isinstance(raw_projects, list):
+        return normalized
+    prior_by_id = {project["id"]: project for project in prior["projects"]}
+    for raw in raw_projects:
+        if not isinstance(raw, dict):
+            continue
+        project_id = raw.get("id")
+        submitted = raw.get("success_criteria")
+        persisted = prior_by_id.get(project_id) if isinstance(project_id, str) else None
+        if persisted is None or not isinstance(submitted, list):
+            continue
+        try:
+            bounded_text_list(
+                submitted,
+                "success_criteria",
+                MAX_SUCCESS_CRITERIA,
+                MAX_CRITERION_CHARS,
+                minimum=1,
+            )
+        except DecisionHandoffError:
+            # Malformed immutable input is not a harmless paraphrase; normal
+            # project validation must report it rather than silently repair it.
+            continue
+        authoritative = copy.deepcopy(persisted["successCriteria"])
+        if submitted != authoritative and logger is not None:
+            logger(f"[HANDOFF] normalized immutable success criteria for retained project {project_id}")
+        raw["success_criteria"] = authoritative
+    return normalized
 
 
 def fallback_handoff(previous: dict[str, Any] | None, assessment: str) -> dict[str, Any]:

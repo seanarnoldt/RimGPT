@@ -228,7 +228,7 @@ class StateBackedCompletionM10H5Tests(unittest.TestCase):
         )
         progress = self.progress_for(state)
         self.assertLess(len(json.dumps(progress, separators=(",", ":"))), 8_000)
-        self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m11.2.2")
+        self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m11.2.3")
         self.assertIn("inactivity is not a stall", SYSTEM_INSTRUCTIONS)
 
     def test_bounded_building_snapshot_prioritizes_pending_and_player_construction(self):
