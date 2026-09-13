@@ -1,0 +1,449 @@
+[AUTONOMY] Scheduler started; Ctrl+C stops without changing game speed
+[AUTONOMY] decision=1 trigger=construction_complete priority=normal attempt=1
+[STATE] Checking RimGPT bridge health
+[STATE] Bridge health: ok (RimGPT)
+[STATESTORE] loaded persisted state snapshot=219
+[STATESTORE] colony=0cb2f1e8 snapshot=768 persisted
+[STATE] loaded=True paused=False speed=3 ticks=297322 colonists=3 prisoners=0 animals=1 threats=0 meals=13 nutrition=11.7 colonistNames=[Tim, Sarai, Dos]
+[DELTA] from=154 to=768 chars=7787 fullStateChars=100578 compressionRatio=12.9x
+[CONTEXT COMPARISON] fullStateChars=100578 memoryChars=273 summaryChars=2595 deltaChars=7787 progressChars=2722 stallChars=523 triggerChars=1833 decisionHandoffChars=5298 compactDynamicChars=23957 dynamicCompression=4.2x fullStateSent=false
+[TOOLS] activeGroups=core toolCount=9 schemaChars=7650
+[MODEL] Requesting one decision cycle from gpt-5.6
+[BUDGET] requestsRemaining=8 finalizationReserved=true toolMode=normal
+[TOOLS] requestMode=normal toolCount=9 schemaChars=7650
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=27182 activeToolSchemaChars=7650 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=27182 toolSchemaChars=7650 v2ToolSchemaChars=7648 v3ToolSchemaChars=2 toolResultCharsThisRound=0 toolResultCharsAccumulated=0 memoryChars=273 summaryChars=2595 deltaChars=7787 triggerChars=1833 decisionHandoffChars=5298 bootstrap=false bootstrapChars=0 fullStateChars=100578 operationsChars=10830 fullStateSent=false colonistsChars=15943 mapOverviewChars=2292 carriedContextChars=0 requestEstimateChars=50542 estimatedInputTokens=16848
+[COST] request=1 kind=response model=gpt-5.6 inputTokens=10498 cachedInputTokens=4065 cacheWriteTokens=6430 uncachedInputTokens=6433 outputTokens=57 uncachedInputCost=$0.0000 cachedInputCost=$0.0016 cacheWriteCost=$0.0321 outputCost=$0.0011 estimatedRequestCost=$0.0349 cycleCost=$0.0349 sessionCost=$0.0349
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=4065 cacheWriteTokens=6430 hitRatio=38.7%
+[MODEL] Tool-call round 1: 1 call(s)
+[ACTION] list_capabilities()
+[RESULT] list_capabilities completed in 0.00s
+[TOOL RESULT] tool=list_capabilities rawChars=1267 modelChars=1235 compressionRatio=1.0x success=true
+[STATESTORE] colony=0cb2f1e8 snapshot=770 persisted
+[STATE] Current loaded=True paused=False speed=3 ticks=298042 colonists=3 prisoners=0 animals=1 threats=0 meals=13 nutrition=11.7 colonistNames=[Tim, Sarai, Dos]
+[MODEL] Sending tool results and fresh state back to model
+[BUDGET] requestsRemaining=7 finalizationReserved=true toolMode=normal
+[TOOLS] requestMode=normal toolCount=9 schemaChars=7650
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=14416 activeToolSchemaChars=7650 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=14416 toolSchemaChars=7650 v2ToolSchemaChars=7648 v3ToolSchemaChars=2 toolResultCharsThisRound=1235 toolResultCharsAccumulated=1235 memoryChars=0 summaryChars=2874 deltaChars=3276 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=101170 operationsChars=11196 fullStateSent=false colonistsChars=15941 mapOverviewChars=2269 carriedContextChars=29042 requestEstimateChars=66818 estimatedInputTokens=22273
+[COST] request=2 kind=compaction model=gpt-5.6 inputTokens=12709 cachedInputTokens=2792 cacheWriteTokens=0 uncachedInputTokens=9917 outputTokens=1089 uncachedInputCost=$0.0397 cachedInputCost=$0.0011 cacheWriteCost=$0.0000 outputCost=$0.0218 estimatedRequestCost=$0.0626 cycleCost=$0.0975 sessionCost=$0.0975
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=2792 cacheWriteTokens=0 hitRatio=22.0%
+[COMPACTION] triggered=true beforeEstimatedTokens=22273 afterEstimatedTokens=23993 cycleCompactions=1
+[BUDGET] requestsRemaining=6 finalizationReserved=true toolMode=normal
+[CONTEXT] systemChars=15710 dynamicInputChars=48619 toolSchemaChars=7650 v2ToolSchemaChars=7648 v3ToolSchemaChars=2 toolResultCharsThisRound=1235 toolResultCharsAccumulated=1235 memoryChars=0 summaryChars=2874 deltaChars=3276 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=101170 operationsChars=11196 fullStateSent=false colonistsChars=15941 mapOverviewChars=2269 carriedContextChars=0 requestEstimateChars=71979 estimatedInputTokens=23993
+[COST] request=3 kind=response model=gpt-5.6 inputTokens=14766 cachedInputTokens=10495 cacheWriteTokens=4268 uncachedInputTokens=4271 outputTokens=94 uncachedInputCost=$0.0000 cachedInputCost=$0.0042 cacheWriteCost=$0.0213 outputCost=$0.0019 estimatedRequestCost=$0.0274 cycleCost=$0.1249 sessionCost=$0.1249
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=10495 cacheWriteTokens=4268 hitRatio=71.1%
+[MODEL] Tool-call round 2: 3 call(s)
+[ACTION] enable_capability(name='construction')
+[TOOLS] capability=construction enabled
+[TOOLS] activeGroups=core,construction toolCount=17 schemaChars=11777
+[RESULT] enable_capability completed in 0.00s
+[TOOL RESULT] tool=enable_capability rawChars=202 modelChars=153 compressionRatio=1.3x success=true
+[ACTION] enable_capability(name='combat')
+[TOOLS] capability=combat enabled
+[TOOLS] activeGroups=core,construction,combat toolCount=21 schemaChars=13783
+[RESULT] enable_capability completed in 0.00s
+[TOOL RESULT] tool=enable_capability rawChars=205 modelChars=156 compressionRatio=1.3x success=true
+[ACTION] enable_capability(name='utility')
+[TOOLS] capability=utility enabled
+[TOOLS] activeGroups=core,construction,combat,utility toolCount=26 schemaChars=15792
+[RESULT] enable_capability completed in 0.00s
+[TOOL RESULT] tool=enable_capability rawChars=216 modelChars=167 compressionRatio=1.3x success=true
+[STATESTORE] colony=0cb2f1e8 snapshot=789 persisted
+[STATE] Current loaded=True paused=False speed=3 ticks=304918 colonists=3 prisoners=0 animals=1 threats=0 meals=7 nutrition=6.3 colonistNames=[Tim, Sarai, Dos]
+[HEADROOM] finalizationOnly=true estimatedInputTokens=28184 targetTokens=28000 headroomReserveUnachievable=true
+[MODEL] Sending tool results and fresh state back to model
+[BUDGET] requestsRemaining=5 finalizationReserved=true toolMode=context-finalization-only
+[TOOLS] requestMode=context-finalization-only toolCount=1 schemaChars=3858
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=14039 activeToolSchemaChars=3858 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=14039 toolSchemaChars=3858 v2ToolSchemaChars=3856 v3ToolSchemaChars=2 toolResultCharsThisRound=476 toolResultCharsAccumulated=1711 memoryChars=0 summaryChars=2965 deltaChars=4041 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=102189 operationsChars=12157 fullStateSent=false colonistsChars=15948 mapOverviewChars=2269 carriedContextChars=50943 requestEstimateChars=84550 estimatedInputTokens=28184
+[COMPACTION] triggered=false reason=limitReached beforeEstimatedTokens=28184 cycleCompactions=1
+[COST] request=4 kind=response model=gpt-5.6 inputTokens=16614 cachedInputTokens=3329 cacheWriteTokens=13155 uncachedInputTokens=13285 outputTokens=1301 uncachedInputCost=$0.0005 cachedInputCost=$0.0013 cacheWriteCost=$0.0658 outputCost=$0.0260 estimatedRequestCost=$0.0936 cycleCost=$0.2186 sessionCost=$0.2186
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=3329 cacheWriteTokens=13155 hitRatio=20.0%
+[MODEL] Tool-call round 3: 1 call(s)
+[ACTION] finish_decision(assessment='Food is now critical: 7 meals (~1.3 days) for 3 colonists, no meal source, and crops are immature. All 3 colonists are idle. Three wooden barricades are complete, satisfying the narrow starter-defense loop. Shelter and research remain blocked by missing build definitions; the persisted rice-specific project remains unmet despite two fully planted potato plots.', open_loops=[{'id': 'L-83db98', 'objective': 'Prepare adequate cold-weather clothing before temperatures fall further', 'next_action': 'Monitor for meaningful cooling or a warm-clothes warning; do not disrupt work at the current mild 12.7°C.', 'status': 'deferred', 'reason': 'No cold injury or clothing warning exists; food and productive work are higher priorities.'}, {'id': 'L-1a87c4', 'objective': 'Establish a usable meal-preparation source before packaged meals run low', 'next_action': 'Next cycle, enable construction controls, retrieve the exact campfire/stove definition, validate placement, and place it immediately.', 'status': 'pending', 'reason': 'Only 7 meals (~1.3 days) remain and no cooking facility or bill exists.'}], resolved_loops=[{'id': 'L-ff7a1f', 'resolution': 'completed', 'reason': 'Three wooden barricades are authoritatively complete; this is proportionate starter defense at current low wealth and no active threat.'}], projects=[{'id': 'P-c39457', 'objective': 'Establish immediate sleeping shelter and basic storage', 'rationale': 'Outdoor sleeping spots and storage are usable, but an enclosed roofed room remains the primary shelter gap.', 'status': 'blocked', 'success_criteria': ['At least 3 colonist-usable sleeping places exist', 'At least 1 occupied enclosed, substantially roofed room is verified', 'Essential supplies have a practical designated storage area'], 'blockers': ['Exact wall and door build definitions are still needed; authoritative state confirms no enclosed roofed room exists.'], 'tasks': [{'id': 'T-72623e', 'key': 'inspect_shelter_site', 'objective': 'Inspect and validate a compact local shelter site', 'status': 'completed', 'mode': 'active', 'depends_on': [], 'blockers': []}, {'id': 'T-cead11', 'key': 'place_sleeping', 'objective': 'Place three valid sleeping spots immediately', 'status': 'completed', 'mode': 'active', 'depends_on': ['T-72623e'], 'blockers': []}, {'id': 'T-78ad09', 'key': 'build_shelter', 'objective': 'Place and complete a compact wood shelter with access', 'status': 'blocked', 'mode': 'active', 'depends_on': ['T-72623e'], 'blockers': ['Need exact wall and door build definitions.']}, {'id': 'T-244519', 'key': 'verify_room', 'objective': 'Verify enclosure, roofing, and room temperature at an interior cell', 'status': 'blocked', 'mode': 'active', 'depends_on': ['T-78ad09'], 'blockers': ['No player-built enclosed room exists to inspect.']}]}, {'id': 'P-c24807', 'objective': 'Create a renewable food pipeline and useful background work', 'rationale': 'Food is now critical; 69 potato cells are planted, but the persisted rice-specific objective remains unmet.', 'status': 'blocked', 'success_criteria': ['A validated, reasonably sized rice growing zone exists', 'Rice planting is complete or authoritatively advancing', 'Food runway remains adequate while crops mature'], 'blockers': ['The two existing zones are fully planted potatoes, not rice; exact rice plant definition is still required.', 'Food runway is only ~1.3 days while all crops remain immature.'], 'tasks': [{'id': 'T-f2ff84', 'key': 'inspect_farm_site', 'objective': 'Inspect and validate a compact nearby farm site', 'status': 'completed', 'mode': 'active', 'depends_on': [], 'blockers': []}, {'id': 'T-2d530d', 'key': 'create_rice_zone', 'objective': 'Create a contiguous starter rice zone with a minimum useful cell count', 'status': 'blocked', 'mode': 'active', 'depends_on': ['T-f2ff84'], 'blockers': ['Confirm exact rice plant definition; existing zones are potato.']}, {'id': 'T-c5e085', 'key': 'monitor_planting', 'objective': 'Confirm rice planting advances while meal runway remains adequate', 'status': 'blocked', 'mode': 'background', 'depends_on': ['T-2d530d'], 'blockers': ['No rice zone exists, and current food runway is inadequate while 69 potato plants mature.']}]}, {'id': 'P-b3fa0e', 'objective': 'Start early infrastructure research', 'rationale': 'Batteries is selected; a sheltered basic research bench remains the prerequisite for useful research work.', 'status': 'blocked', 'success_criteria': ['Battery research is selected', 'A research bench exists and is operational in suitable shelter', 'Research progress is authoritatively advancing'], 'blockers': ['No usable research bench exists, Batteries remains at 0, and suitable enclosed shelter is absent.'], 'tasks': [{'id': 'T-d653d0', 'key': 'select_batteries', 'objective': 'Select Batteries as the current research project', 'status': 'completed', 'mode': 'background', 'depends_on': [], 'blockers': []}, {'id': 'T-977c2f', 'key': 'place_research_bench', 'objective': 'Validate and place a basic research bench after shelter layout is known', 'status': 'blocked', 'mode': 'background', 'depends_on': [], 'blockers': ['Requires completed shelter layout and exact research-bench build definition.']}, {'id': 'T-eaf333', 'key': 'confirm_research', 'objective': 'Confirm research progress is advancing', 'status': 'blocked', 'mode': 'background', 'depends_on': ['T-d653d0', 'T-977c2f'], 'blockers': ['Research remains at 0 because no usable bench exists.']}]}], resolved_projects=[])
+[HANDOFF] finish_decision accepted chars=5066 openLoops=2 projects=3 resolved=L-ff7a1f
+[RESULT] finish_decision completed in 0.00s
+[TOOL RESULT] tool=finish_decision rawChars=5115 modelChars=5081 compressionRatio=1.0x success=true
+[MODEL] Tool-call loop terminated: finish_decision completed locally
+[MODEL] Final assessment: Food is now critical: 7 meals (~1.3 days) for 3 colonists, no meal source, and crops are immature. All 3 colonists are idle. Three wooden barricades are complete, satisfying the narrow starter-defense loop. Shelter and research remain blocked by missing build definitions; the persisted rice-specific project remains unmet despite two fully planted potato plots.
+[STATESTORE] colony=0cb2f1e8 snapshot=804 persisted
+[STATE] Final authoritative loaded=True paused=False speed=3 ticks=310238 colonists=3 prisoners=0 animals=1 threats=0 meals=6 nutrition=5.4 colonistNames=[Tim, Sarai, Dos]
+[HANDOFF] successful decision handoff and baseline persisted
+[AUTONOMY] decision=2 trigger=construction_complete priority=normal attempt=1
+[STATE] Checking RimGPT bridge health
+[STATE] Bridge health: ok (RimGPT)
+[STATESTORE] colony=0cb2f1e8 snapshot=812 persisted
+[STATE] loaded=True paused=False speed=3 ticks=313136 colonists=3 prisoners=0 animals=1 threats=0 meals=6 nutrition=5.4 colonistNames=[Tim, Sarai, Dos]
+[DELTA] from=804 to=812 chars=2144 fullStateChars=103376 compressionRatio=48.2x
+[CONTEXT COMPARISON] fullStateChars=103376 memoryChars=273 summaryChars=2970 deltaChars=2144 progressChars=1666 stallChars=2 triggerChars=1833 decisionHandoffChars=5066 compactDynamicChars=16680 dynamicCompression=6.2x fullStateSent=false
+[TOOLS] activeGroups=core toolCount=9 schemaChars=7650
+[MODEL] Requesting one decision cycle from gpt-5.6
+[BUDGET] requestsRemaining=8 finalizationReserved=true toolMode=normal
+[TOOLS] requestMode=normal toolCount=9 schemaChars=7650
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=18856 activeToolSchemaChars=7650 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=18856 toolSchemaChars=7650 v2ToolSchemaChars=7648 v3ToolSchemaChars=2 toolResultCharsThisRound=0 toolResultCharsAccumulated=0 memoryChars=273 summaryChars=2970 deltaChars=2144 triggerChars=1833 decisionHandoffChars=5066 bootstrap=false bootstrapChars=0 fullStateChars=103376 operationsChars=12869 fullStateSent=false colonistsChars=15951 mapOverviewChars=2269 carriedContextChars=0 requestEstimateChars=42216 estimatedInputTokens=14072
+[COST] request=1 kind=response model=gpt-5.6 inputTokens=8424 cachedInputTokens=4065 cacheWriteTokens=4356 uncachedInputTokens=4359 outputTokens=46 uncachedInputCost=$0.0000 cachedInputCost=$0.0016 cacheWriteCost=$0.0218 outputCost=$0.0009 estimatedRequestCost=$0.0243 cycleCost=$0.0243 sessionCost=$0.2429
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=4065 cacheWriteTokens=4356 hitRatio=48.3%
+[MODEL] Tool-call round 1: 1 call(s)
+[ACTION] list_capabilities()
+[RESULT] list_capabilities completed in 0.00s
+[TOOL RESULT] tool=list_capabilities rawChars=1267 modelChars=1235 compressionRatio=1.0x success=true
+[STATESTORE] colony=0cb2f1e8 snapshot=815 persisted
+[STATE] Current loaded=True paused=False speed=3 ticks=314222 colonists=3 prisoners=0 animals=1 threats=0 meals=6 nutrition=5.4 colonistNames=[Tim, Sarai, Dos]
+[MODEL] Sending tool results and fresh state back to model
+[BUDGET] requestsRemaining=7 finalizationReserved=true toolMode=normal
+[TOOLS] requestMode=normal toolCount=9 schemaChars=7650
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=13144 activeToolSchemaChars=7650 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=13144 toolSchemaChars=7650 v2ToolSchemaChars=7648 v3ToolSchemaChars=2 toolResultCharsThisRound=1235 toolResultCharsAccumulated=1235 memoryChars=0 summaryChars=2970 deltaChars=2789 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=103549 operationsChars=12892 fullStateSent=false colonistsChars=15950 mapOverviewChars=2269 carriedContextChars=20628 requestEstimateChars=57132 estimatedInputTokens=19044
+[COST] request=2 kind=response model=gpt-5.6 inputTokens=11611 cachedInputTokens=8421 cacheWriteTokens=3187 uncachedInputTokens=3190 outputTokens=148 uncachedInputCost=$0.0000 cachedInputCost=$0.0034 cacheWriteCost=$0.0159 outputCost=$0.0030 estimatedRequestCost=$0.0223 cycleCost=$0.0466 sessionCost=$0.2652
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=8421 cacheWriteTokens=3187 hitRatio=72.5%
+[MODEL] Tool-call round 2: 3 call(s)
+[ACTION] enable_capability(name='construction')
+[TOOLS] capability=construction enabled
+[TOOLS] activeGroups=core,construction toolCount=17 schemaChars=11777
+[RESULT] enable_capability completed in 0.00s
+[TOOL RESULT] tool=enable_capability rawChars=202 modelChars=153 compressionRatio=1.3x success=true
+[ACTION] enable_capability(name='production')
+[TOOLS] capability=production enabled
+[TOOLS] activeGroups=core,construction,production toolCount=22 schemaChars=13663
+[RESULT] enable_capability completed in 0.00s
+[TOOL RESULT] tool=enable_capability rawChars=213 modelChars=164 compressionRatio=1.3x success=true
+[ACTION] enable_capability(name='utility')
+[TOOLS] capability=utility enabled
+[TOOLS] activeGroups=core,construction,production,utility toolCount=27 schemaChars=15672
+[RESULT] enable_capability completed in 0.00s
+[TOOL RESULT] tool=enable_capability rawChars=220 modelChars=171 compressionRatio=1.3x success=true
+[STATESTORE] colony=0cb2f1e8 snapshot=819 persisted
+[STATE] Current loaded=True paused=False speed=3 ticks=315674 colonists=3 prisoners=0 animals=1 threats=0 meals=6 nutrition=5.4 colonistNames=[Tim, Sarai, Dos]
+[MODEL] Sending tool results and fresh state back to model
+[BUDGET] requestsRemaining=6 finalizationReserved=true toolMode=normal
+[TOOLS] requestMode=normal toolCount=27 schemaChars=15672
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=11774 activeToolSchemaChars=15672 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=11774 toolSchemaChars=15672 v2ToolSchemaChars=13785 v3ToolSchemaChars=1887 toolResultCharsThisRound=488 toolResultCharsAccumulated=1723 memoryChars=0 summaryChars=2970 deltaChars=2099 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=103548 operationsChars=12890 fullStateSent=false colonistsChars=15949 mapOverviewChars=2269 carriedContextChars=36548 requestEstimateChars=79704 estimatedInputTokens=26568
+[COST] request=3 kind=compaction model=gpt-5.6 inputTokens=13334 cachedInputTokens=2792 cacheWriteTokens=0 uncachedInputTokens=10542 outputTokens=957 uncachedInputCost=$0.0422 cachedInputCost=$0.0011 cacheWriteCost=$0.0000 outputCost=$0.0191 estimatedRequestCost=$0.0624 cycleCost=$0.1090 sessionCost=$0.3276
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=2792 cacheWriteTokens=0 hitRatio=20.9%
+[COMPACTION] triggered=true beforeEstimatedTokens=26568 afterEstimatedTokens=26932 cycleCompactions=1
+[BUDGET] requestsRemaining=5 finalizationReserved=true toolMode=normal
+[CONTEXT] systemChars=15710 dynamicInputChars=49414 toolSchemaChars=15672 v2ToolSchemaChars=13785 v3ToolSchemaChars=1887 toolResultCharsThisRound=488 toolResultCharsAccumulated=1723 memoryChars=0 summaryChars=2970 deltaChars=2099 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=103548 operationsChars=12890 fullStateSent=false colonistsChars=15949 mapOverviewChars=2269 carriedContextChars=0 requestEstimateChars=80796 estimatedInputTokens=26932
+[COST] request=4 kind=response model=gpt-5.6 inputTokens=16032 cachedInputTokens=0 cacheWriteTokens=16029 uncachedInputTokens=16032 outputTokens=252 uncachedInputCost=$0.0000 cachedInputCost=$0.0000 cacheWriteCost=$0.0801 outputCost=$0.0050 estimatedRequestCost=$0.0852 cycleCost=$0.1942 sessionCost=$0.4128
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=0 cacheWriteTokens=16029 hitRatio=0.0%
+[MODEL] Tool-call round 3: 6 call(s)
+[ACTION] list_build_options(category=None, search='campfire')
+[RESULT] list_build_options completed in 0.02s
+[TOOL RESULT] tool=list_build_options rawChars=405 modelChars=353 compressionRatio=1.1x success=true
+[ACTION] list_build_options(category=None, search='wall')
+[RESULT] list_build_options completed in 0.02s
+[TOOL RESULT] tool=list_build_options rawChars=1009 modelChars=891 compressionRatio=1.1x success=true
+[ACTION] list_build_options(category=None, search='door')
+[RESULT] list_build_options completed in 0.02s
+[TOOL RESULT] tool=list_build_options rawChars=748 modelChars=696 compressionRatio=1.1x success=true
+[ACTION] list_build_options(category=None, search='research bench')
+[RESULT] list_build_options completed in 0.02s
+[TOOL RESULT] tool=list_build_options rawChars=475 modelChars=423 compressionRatio=1.1x success=true
+[ACTION] inspect_map(min_x=128, min_z=130, max_x=148, max_z=150)
+[RESULT] inspect_map completed in 0.05s
+[TOOL RESULT] tool=inspect_map rawChars=41336 modelChars=5126 compressionRatio=8.1x success=true
+[ACTION] allow(thing_id='Corpse_Porcupine53974')
+[ACTION] submitted allow commandId=350dcfa2a00b4e25aeb8c638b09ba595 in 0.00s
+[RESULT] 350dcfa2a00b4e25aeb8c638b09ba595 completed in 0.36s success=true
+[TOOL RESULT] tool=allow rawChars=197 modelChars=68 compressionRatio=2.9x success=true
+[STATESTORE] colony=0cb2f1e8 snapshot=840 persisted
+[STATE] Post-action authoritative version=840 loaded=True paused=False speed=3 ticks=322934 colonists=3 prisoners=0 animals=1 threats=0 meals=6 nutrition=6.565 colonistNames=[Tim, Sarai, Dos]
+[HEADROOM] tool=inspect_map callId=call_wCBGexsAMRcIt2F7kRc5TcQI beforeChars=5126 afterChars=421 targetTokens=28000
+[HEADROOM] actionBurst=true estimatedInputTokens=31816 targetTokens=34000 hardLimitTokens=36000 finalizationReserved=true
+[MODEL] Sending tool results and fresh state back to model
+[BUDGET] requestsRemaining=4 finalizationReserved=true toolMode=context-action-only
+[TOOLS] requestMode=context-action-only toolCount=16 schemaChars=10184
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=16428 activeToolSchemaChars=10184 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=16428 toolSchemaChars=10184 v2ToolSchemaChars=8628 v3ToolSchemaChars=1556 toolResultCharsThisRound=2852 toolResultCharsAccumulated=4575 memoryChars=0 summaryChars=3008 deltaChars=3346 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=103445 operationsChars=12892 fullStateSent=false colonistsChars=15948 mapOverviewChars=2273 carriedContextChars=53125 requestEstimateChars=95447 estimatedInputTokens=31816
+[COMPACTION] triggered=false reason=limitReached beforeEstimatedTokens=31816 cycleCompactions=1
+[HEADROOM] actionRoundConsumed=true nextRequestFinalizationOnly=true
+[HEADROOM] actionBurstConsumed=true estimatedInputTokens=31816 hardLimitTokens=36000 nextRequestFinalizationOnly=true
+[COST] request=5 kind=response model=gpt-5.6 inputTokens=18527 cachedInputTokens=0 cacheWriteTokens=18524 uncachedInputTokens=18527 outputTokens=66 uncachedInputCost=$0.0000 cachedInputCost=$0.0000 cacheWriteCost=$0.0926 outputCost=$0.0013 estimatedRequestCost=$0.0940 cycleCost=$0.2882 sessionCost=$0.5068
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=0 cacheWriteTokens=18524 hitRatio=0.0%
+[MODEL] Tool-call round 4: 1 call(s)
+[ACTION] set_speed(speed=0)
+[ACTION] submitted set_speed commandId=fb5736d37188426e879d16203661a3c5 in 0.00s
+[RESULT] fb5736d37188426e879d16203661a3c5 completed in 0.35s success=true
+[TOOL RESULT] tool=set_speed rawChars=202 modelChars=26 compressionRatio=7.8x success=true
+[STATESTORE] colony=0cb2f1e8 snapshot=844 persisted
+[STATE] Post-action authoritative version=844 loaded=True paused=True speed=0 ticks=324000 colonists=3 prisoners=0 animals=1 threats=1 meals=6 nutrition=6.565 colonistNames=[Tim, Sarai, Dos]
+[HEADROOM] finalizationOnly=true estimatedInputTokens=34749 targetTokens=28000 headroomReserveUnachievable=true
+[MODEL] Sending tool results and fresh state back to model
+[BUDGET] requestsRemaining=3 finalizationReserved=true toolMode=context-finalization-only
+[TOOLS] requestMode=context-finalization-only toolCount=1 schemaChars=3858
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=13286 activeToolSchemaChars=3858 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=13286 toolSchemaChars=3858 v2ToolSchemaChars=3856 v3ToolSchemaChars=2 toolResultCharsThisRound=26 toolResultCharsAccumulated=4601 memoryChars=0 summaryChars=3643 deltaChars=3389 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=104607 operationsChars=13092 fullStateSent=false colonistsChars=15959 mapOverviewChars=2273 carriedContextChars=71392 requestEstimateChars=104246 estimatedInputTokens=34749
+[COMPACTION] triggered=false reason=limitReached beforeEstimatedTokens=34749 cycleCompactions=1
+[CONTEXT LIMIT] system=15710 dynamic=13286 tools=3858 toolResults=4601 fullState=104607 operations=13092 fullStateSent=false estimatedInputTokens=34749 hardLimitTokens=30000 requestMode=context-finalization-only actionBurst=false
+[ERROR] Tool-call loop terminated: Model context exceeds configured input-token limit. estimatedInputTokens=34749 limit=30000
+[MODEL] Final assessment: no text returned
+[AUTONOMY] decision=3 trigger=new_threat priority=urgent attempt=1
+[STATE] Checking RimGPT bridge health
+[STATE] Bridge health: ok (RimGPT)
+[STATESTORE] colony=0cb2f1e8 snapshot=846 persisted
+[STATE] loaded=True paused=True speed=0 ticks=324000 colonists=3 prisoners=0 animals=1 threats=1 meals=6 nutrition=6.565 colonistNames=[Tim, Sarai, Dos]
+[DELTA] from=804 to=846 chars=4798 fullStateChars=104607 compressionRatio=21.8x
+[CONTEXT COMPARISON] fullStateChars=104607 memoryChars=273 summaryChars=3643 deltaChars=4798 progressChars=1753 stallChars=270 triggerChars=1857 decisionHandoffChars=5066 compactDynamicChars=20482 dynamicCompression=5.1x fullStateSent=false
+[TOOLS] capability=combat preloaded
+[TOOLS] activeGroups=core,combat toolCount=13 schemaChars=9656
+[MODEL] Requesting one decision cycle from gpt-5.6
+[BUDGET] requestsRemaining=8 finalizationReserved=true toolMode=normal
+[TOOLS] requestMode=normal toolCount=13 schemaChars=9656
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=23160 activeToolSchemaChars=9656 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=23160 toolSchemaChars=9656 v2ToolSchemaChars=9654 v3ToolSchemaChars=2 toolResultCharsThisRound=0 toolResultCharsAccumulated=0 memoryChars=273 summaryChars=3643 deltaChars=4798 triggerChars=1857 decisionHandoffChars=5066 bootstrap=false bootstrapChars=0 fullStateChars=104607 operationsChars=13092 fullStateSent=false colonistsChars=15959 mapOverviewChars=2273 carriedContextChars=0 requestEstimateChars=48526 estimatedInputTokens=16176
+[COST] request=1 kind=response model=gpt-5.6 inputTokens=9834 cachedInputTokens=0 cacheWriteTokens=9831 uncachedInputTokens=9834 outputTokens=127 uncachedInputCost=$0.0000 cachedInputCost=$0.0000 cacheWriteCost=$0.0492 outputCost=$0.0025 estimatedRequestCost=$0.0517 cycleCost=$0.0517 sessionCost=$0.5585
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=0 cacheWriteTokens=9831 hitRatio=0.0%
+[MODEL] Tool-call round 1: 3 call(s)
+[ACTION] get_colony_state(section='pawns')
+[RESULT] get_colony_state completed in 0.01s
+[TOOL RESULT] tool=get_colony_state rawChars=1975 modelChars=1845 compressionRatio=1.1x success=true
+[ACTION] get_colony_state(section='equipment')
+[RESULT] get_colony_state completed in 0.00s
+[TOOL RESULT] tool=get_colony_state rawChars=1775 modelChars=1651 compressionRatio=1.1x success=true
+[ACTION] get_colony_state(section='threats')
+[RESULT] get_colony_state completed in 0.01s
+[TOOL RESULT] tool=get_colony_state rawChars=438 modelChars=389 compressionRatio=1.1x success=true
+[STATESTORE] colony=0cb2f1e8 snapshot=849 persisted
+[STATE] Current loaded=True paused=True speed=0 ticks=324000 colonists=3 prisoners=0 animals=1 threats=1 meals=6 nutrition=6.565 colonistNames=[Tim, Sarai, Dos]
+[MODEL] Sending tool results and fresh state back to model
+[BUDGET] requestsRemaining=7 finalizationReserved=true toolMode=normal
+[TOOLS] requestMode=normal toolCount=13 schemaChars=9656
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=14157 activeToolSchemaChars=9656 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=14157 toolSchemaChars=9656 v2ToolSchemaChars=9654 v3ToolSchemaChars=2 toolResultCharsThisRound=3885 toolResultCharsAccumulated=3885 memoryChars=0 summaryChars=3643 deltaChars=67 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=104607 operationsChars=13092 fullStateSent=false colonistsChars=15959 mapOverviewChars=2273 carriedContextChars=25658 requestEstimateChars=65181 estimatedInputTokens=21727
+[COST] request=2 kind=compaction model=gpt-5.6 inputTokens=11834 cachedInputTokens=2792 cacheWriteTokens=0 uncachedInputTokens=9042 outputTokens=1176 uncachedInputCost=$0.0362 cachedInputCost=$0.0011 cacheWriteCost=$0.0000 outputCost=$0.0235 estimatedRequestCost=$0.0608 cycleCost=$0.1125 sessionCost=$0.6193
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=2792 cacheWriteTokens=0 hitRatio=23.6%
+[COMPACTION] triggered=true beforeEstimatedTokens=21727 afterEstimatedTokens=22246 cycleCompactions=1
+[BUDGET] requestsRemaining=6 finalizationReserved=true toolMode=normal
+[CONTEXT] systemChars=15710 dynamicInputChars=41370 toolSchemaChars=9656 v2ToolSchemaChars=9654 v3ToolSchemaChars=2 toolResultCharsThisRound=3885 toolResultCharsAccumulated=3885 memoryChars=0 summaryChars=3643 deltaChars=67 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=104607 operationsChars=13092 fullStateSent=false colonistsChars=15959 mapOverviewChars=2273 carriedContextChars=0 requestEstimateChars=66736 estimatedInputTokens=22246
+[COST] request=3 kind=response model=gpt-5.6 inputTokens=13265 cachedInputTokens=9831 cacheWriteTokens=3431 uncachedInputTokens=3434 outputTokens=49 uncachedInputCost=$0.0000 cachedInputCost=$0.0039 cacheWriteCost=$0.0172 outputCost=$0.0010 estimatedRequestCost=$0.0221 cycleCost=$0.1346 sessionCost=$0.6413
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=9831 cacheWriteTokens=3431 hitRatio=74.1%
+[MODEL] Tool-call round 2: 1 call(s)
+[ACTION] inspect_map(min_x=138, min_z=132, max_x=158, max_z=152)
+[RESULT] inspect_map completed in 0.03s
+[TOOL RESULT] tool=inspect_map rawChars=49420 modelChars=7931 compressionRatio=6.2x success=true
+[STATESTORE] colony=0cb2f1e8 snapshot=866 persisted
+[STATE] Current loaded=True paused=True speed=0 ticks=324000 colonists=3 prisoners=0 animals=1 threats=1 meals=6 nutrition=6.565 colonistNames=[Tim, Sarai, Dos]
+[HEADROOM] tool=inspect_map callId=call_mFTbMu3wWzDgGw4lHEEDgueZ beforeChars=7931 afterChars=421 targetTokens=28000
+[MODEL] Sending tool results and fresh state back to model
+[BUDGET] requestsRemaining=5 finalizationReserved=true toolMode=normal
+[TOOLS] requestMode=normal toolCount=13 schemaChars=9656
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=9925 activeToolSchemaChars=9656 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=9925 toolSchemaChars=9656 v2ToolSchemaChars=9654 v3ToolSchemaChars=2 toolResultCharsThisRound=421 toolResultCharsAccumulated=4306 memoryChars=0 summaryChars=3643 deltaChars=67 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=104607 operationsChars=13092 fullStateSent=false colonistsChars=15959 mapOverviewChars=2273 carriedContextChars=43087 requestEstimateChars=78378 estimatedInputTokens=26126
+[COMPACTION] triggered=false reason=limitReached beforeEstimatedTokens=26126 cycleCompactions=1
+[COST] request=4 kind=response model=gpt-5.6 inputTokens=14479 cachedInputTokens=9831 cacheWriteTokens=4645 uncachedInputTokens=4648 outputTokens=100 uncachedInputCost=$0.0000 cachedInputCost=$0.0039 cacheWriteCost=$0.0232 outputCost=$0.0020 estimatedRequestCost=$0.0292 cycleCost=$0.1638 sessionCost=$0.6705
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=9831 cacheWriteTokens=4645 hitRatio=67.9%
+[MODEL] Tool-call round 3: 3 call(s)
+[ACTION] get_colony_state(section='pawns')
+[STATE READ] reused unchanged section=pawns
+[RESULT] get_colony_state completed in 0.01s
+[TOOL RESULT] tool=get_colony_state rawChars=191 modelChars=157 compressionRatio=1.2x success=true
+[ACTION] get_colony_state(section='equipment')
+[STATE READ] reused unchanged section=equipment
+[RESULT] get_colony_state completed in 0.01s
+[TOOL RESULT] tool=get_colony_state rawChars=195 modelChars=161 compressionRatio=1.2x success=true
+[ACTION] get_colony_state(section='threats')
+[STATE READ] reused unchanged section=threats
+[RESULT] get_colony_state completed in 0.01s
+[TOOL RESULT] tool=get_colony_state rawChars=193 modelChars=159 compressionRatio=1.2x success=true
+[STATESTORE] colony=0cb2f1e8 snapshot=869 persisted
+[STATE] Current loaded=True paused=True speed=0 ticks=324000 colonists=3 prisoners=0 animals=1 threats=1 meals=6 nutrition=6.565 colonistNames=[Tim, Sarai, Dos]
+[HEADROOM] finalizationOnly=true estimatedInputTokens=28363 targetTokens=28000 headroomReserveUnachievable=true
+[MODEL] Sending tool results and fresh state back to model
+[BUDGET] requestsRemaining=4 finalizationReserved=true toolMode=context-finalization-only
+[TOOLS] requestMode=context-finalization-only toolCount=1 schemaChars=3858
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=10161 activeToolSchemaChars=3858 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=10161 toolSchemaChars=3858 v2ToolSchemaChars=3856 v3ToolSchemaChars=2 toolResultCharsThisRound=477 toolResultCharsAccumulated=4783 memoryChars=0 summaryChars=3643 deltaChars=67 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=104607 operationsChars=13092 fullStateSent=false colonistsChars=15959 mapOverviewChars=2273 carriedContextChars=55358 requestEstimateChars=85087 estimatedInputTokens=28363
+[COMPACTION] triggered=false reason=limitReached beforeEstimatedTokens=28363 cycleCompactions=1
+[COST] request=5 kind=response model=gpt-5.6 inputTokens=16061 cachedInputTokens=3329 cacheWriteTokens=12602 uncachedInputTokens=12732 outputTokens=1326 uncachedInputCost=$0.0005 cachedInputCost=$0.0013 cacheWriteCost=$0.0630 outputCost=$0.0265 estimatedRequestCost=$0.0914 cycleCost=$0.2551 sessionCost=$0.7619
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=3329 cacheWriteTokens=12602 hitRatio=20.7%
+[MODEL] Tool-call round 4: 1 call(s)
+[ACTION] finish_decision(assessment='Paused on a one-melee-waster raid: Nose is far east at (247,132) with a damaged wooden club; all three colonists are armed, healthy, and near (108–116,160–164). Do not pre-empt across the map without weapon/terrain detail; keep the game paused pending a defensive deployment. Food remains urgent at 6 meals (~1.4 days), with 69 immature potatoes and no meal source. Existing shelter, rice, and research projects remain blocked.', open_loops=[{'id': 'L-83db98', 'objective': 'Prepare adequate cold-weather clothing before temperatures fall further', 'next_action': 'Monitor for meaningful cooling or a warm-clothes warning; current 23.2°C weather needs no intervention.', 'status': 'deferred', 'reason': 'No cold injury or clothing warning exists; raid and food are higher priorities.'}, {'id': 'L-1a87c4', 'objective': 'Establish a usable meal-preparation source before packaged meals run low', 'next_action': 'After the raid is controlled, enable construction controls, identify the campfire or stove build definition, validate placement, and place it.', 'status': 'pending', 'reason': 'Only 6 meals (~1.4 days) remain, crops are immature, and no cooking facility exists.'}, {'id': None, 'objective': 'Defeat the preparing Pollution Slickers raid without avoidable colonist injury', 'next_action': 'Keep paused; next cycle retrieve exact colonist weapons and inspect a small defensive area, then deploy against the lone club wielder or await attack behind cover.', 'status': 'pending', 'reason': 'A lone melee raider is preparing far east, but the exact friendly weapons and defensive geometry were withheld/reduced this cycle.'}], resolved_loops=[], projects=[{'id': 'P-c39457', 'objective': 'Establish immediate sleeping shelter and basic storage', 'rationale': 'Outdoor sleeping spots and storage are usable, but an enclosed roofed room remains the primary shelter gap.', 'status': 'blocked', 'success_criteria': ['At least 3 colonist-usable sleeping places exist', 'At least 1 occupied enclosed, substantially roofed room is verified', 'Essential supplies have a practical designated storage area'], 'blockers': ['Exact wall and door build definitions are still needed; authoritative state confirms no enclosed roofed room exists.'], 'tasks': [{'id': 'T-72623e', 'key': 'inspect_shelter_site', 'objective': 'Inspect and validate a compact local shelter site', 'status': 'completed', 'mode': 'active', 'depends_on': [], 'blockers': []}, {'id': 'T-cead11', 'key': 'place_sleeping', 'objective': 'Place three valid sleeping spots immediately', 'status': 'completed', 'mode': 'active', 'depends_on': ['T-72623e'], 'blockers': []}, {'id': 'T-78ad09', 'key': 'build_shelter', 'objective': 'Place and complete a compact wood shelter with access', 'status': 'blocked', 'mode': 'active', 'depends_on': ['T-72623e'], 'blockers': ['Need exact wall and door build definitions.']}, {'id': 'T-244519', 'key': 'verify_room', 'objective': 'Verify enclosure, roofing, and room temperature at an interior cell', 'status': 'blocked', 'mode': 'active', 'depends_on': ['T-78ad09'], 'blockers': ['No player-built enclosed room exists to inspect.']}]}, {'id': 'P-c24807', 'objective': 'Create a renewable food pipeline and useful background work', 'rationale': 'Food is critical; 69 potato cells are planted, but the persisted rice-specific objective remains unmet.', 'status': 'blocked', 'success_criteria': ['A validated, reasonably sized rice growing zone exists', 'Rice planting is complete or authoritatively advancing', 'Food runway remains adequate while crops mature'], 'blockers': ['The two existing zones are fully planted potatoes, not rice; exact rice plant definition is still required.', 'Food runway is only ~1.4 days while all crops remain immature.'], 'tasks': [{'id': 'T-f2ff84', 'key': 'inspect_farm_site', 'objective': 'Inspect and validate a compact nearby farm site', 'status': 'completed', 'mode': 'active', 'depends_on': [], 'blockers': []}, {'id': 'T-2d530d', 'key': 'create_rice_zone', 'objective': 'Create a contiguous starter rice zone with a minimum useful cell count', 'status': 'blocked', 'mode': 'active', 'depends_on': ['T-f2ff84'], 'blockers': ['Confirm exact rice plant definition; existing zones are potato.']}, {'id': 'T-c5e085', 'key': 'monitor_planting', 'objective': 'Confirm rice planting advances while meal runway remains adequate', 'status': 'blocked', 'mode': 'background', 'depends_on': ['T-2d530d'], 'blockers': ['No rice zone exists, and current food runway is inadequate while 69 potato plants mature.']}]}, {'id': 'P-b3fa0e', 'objective': 'Start early infrastructure research', 'rationale': 'Batteries is selected; a sheltered basic research bench remains the prerequisite for useful research work.', 'status': 'blocked', 'success_criteria': ['Battery research is selected', 'A research bench exists and is operational in suitable shelter', 'Research progress is authoritatively advancing'], 'blockers': ['No usable research bench exists, Batteries remains at 0, and suitable enclosed shelter is absent.'], 'tasks': [{'id': 'T-d653d0', 'key': 'select_batteries', 'objective': 'Select Batteries as the current research project', 'status': 'completed', 'mode': 'background', 'depends_on': [], 'blockers': []}, {'id': 'T-977c2f', 'key': 'place_research_bench', 'objective': 'Validate and place a basic research bench after shelter layout is known', 'status': 'blocked', 'mode': 'background', 'depends_on': [], 'blockers': ['Requires completed shelter layout and exact research-bench build definition.']}, {'id': 'T-eaf333', 'key': 'confirm_research', 'objective': 'Confirm research progress is advancing', 'status': 'blocked', 'mode': 'background', 'depends_on': ['T-d653d0', 'T-977c2f'], 'blockers': ['Research remains at 0 because no usable bench exists.']}]}], resolved_projects=[])
+[HANDOFF] finish_decision accepted chars=5597 openLoops=3 projects=3 resolved=none
+[RESULT] finish_decision completed in 0.00s
+[TOOL RESULT] tool=finish_decision rawChars=5646 modelChars=5612 compressionRatio=1.0x success=true
+[MODEL] Tool-call loop terminated: finish_decision completed locally
+[MODEL] Final assessment: Paused on a one-melee-waster raid: Nose is far east at (247,132) with a damaged wooden club; all three colonists are armed, healthy, and near (108–116,160–164). Do not pre-empt across the map without weapon/terrain detail; keep the game paused pending a defensive deployment. Food remains urgent at 6 meals (~1.4 days), with 69 immature potatoes and no meal source. Existing shelter, rice, and research projects remain blocked.
+[STATESTORE] colony=0cb2f1e8 snapshot=883 persisted
+[STATE] Final authoritative loaded=True paused=True speed=0 ticks=324000 colonists=3 prisoners=0 animals=1 threats=1 meals=6 nutrition=6.565 colonistNames=[Tim, Sarai, Dos]
+[HANDOFF] successful decision handoff and baseline persisted
+[AUTONOMY] decision=4 trigger=new_threat priority=urgent attempt=2
+[STATE] Checking RimGPT bridge health
+[STATE] Bridge health: ok (RimGPT)
+[STATESTORE] colony=0cb2f1e8 snapshot=1308 persisted
+[STATE] loaded=True paused=False speed=3 ticks=324456 colonists=3 prisoners=0 animals=1 threats=1 meals=6 nutrition=6.565 colonistNames=[Tim, Sarai, Dos]
+[DELTA] from=883 to=1308 chars=2252 fullStateChars=104582 compressionRatio=46.4x
+[CONTEXT COMPARISON] fullStateChars=104582 memoryChars=273 summaryChars=3645 deltaChars=2252 progressChars=1666 stallChars=2 triggerChars=2044 decisionHandoffChars=5597 compactDynamicChars=18242 dynamicCompression=5.7x fullStateSent=false
+[TOOLS] capability=combat preloaded
+[TOOLS] activeGroups=core,combat toolCount=13 schemaChars=9656
+[MODEL] Requesting one decision cycle from gpt-5.6
+[BUDGET] requestsRemaining=8 finalizationReserved=true toolMode=normal
+[TOOLS] requestMode=normal toolCount=13 schemaChars=9656
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=20532 activeToolSchemaChars=9656 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=20532 toolSchemaChars=9656 v2ToolSchemaChars=9654 v3ToolSchemaChars=2 toolResultCharsThisRound=0 toolResultCharsAccumulated=0 memoryChars=273 summaryChars=3645 deltaChars=2252 triggerChars=2044 decisionHandoffChars=5597 bootstrap=false bootstrapChars=0 fullStateChars=104582 operationsChars=13075 fullStateSent=false colonistsChars=15949 mapOverviewChars=2273 carriedContextChars=0 requestEstimateChars=45898 estimatedInputTokens=15300
+[COST] request=1 kind=response model=gpt-5.6 inputTokens=9121 cachedInputTokens=4351 cacheWriteTokens=4767 uncachedInputTokens=4770 outputTokens=115 uncachedInputCost=$0.0000 cachedInputCost=$0.0017 cacheWriteCost=$0.0238 outputCost=$0.0023 estimatedRequestCost=$0.0279 cycleCost=$0.0279 sessionCost=$0.7898
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=4351 cacheWriteTokens=4767 hitRatio=47.7%
+[MODEL] Tool-call round 1: 3 call(s)
+[ACTION] get_colony_state(section='threats')
+[RESULT] get_colony_state completed in 0.01s
+[TOOL RESULT] tool=get_colony_state rawChars=439 modelChars=390 compressionRatio=1.1x success=true
+[ACTION] get_colony_state(section='equipment')
+[RESULT] get_colony_state completed in 0.01s
+[TOOL RESULT] tool=get_colony_state rawChars=1776 modelChars=1652 compressionRatio=1.1x success=true
+[ACTION] inspect_map(min_x=98, min_z=154, max_x=120, max_z=174)
+[RESULT] inspect_map completed in 0.03s
+[TOOL RESULT] tool=inspect_map rawChars=54617 modelChars=4963 compressionRatio=11.0x success=true
+[STATESTORE] colony=0cb2f1e8 snapshot=1313 persisted
+[STATE] Current loaded=True paused=False speed=3 ticks=326221 colonists=3 prisoners=0 animals=1 threats=1 meals=6 nutrition=6.565 colonistNames=[Tim, Sarai, Dos]
+[MODEL] Sending tool results and fresh state back to model
+[BUDGET] requestsRemaining=7 finalizationReserved=true toolMode=normal
+[TOOLS] requestMode=normal toolCount=13 schemaChars=9656
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=19718 activeToolSchemaChars=9656 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=19718 toolSchemaChars=9656 v2ToolSchemaChars=9654 v3ToolSchemaChars=2 toolResultCharsThisRound=7005 toolResultCharsAccumulated=7005 memoryChars=0 summaryChars=3645 deltaChars=1832 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=104582 operationsChars=13072 fullStateSent=false colonistsChars=15952 mapOverviewChars=2273 carriedContextChars=22930 requestEstimateChars=68014 estimatedInputTokens=22672
+[COST] request=2 kind=compaction model=gpt-5.6 inputTokens=12897 cachedInputTokens=2792 cacheWriteTokens=0 uncachedInputTokens=10105 outputTokens=1223 uncachedInputCost=$0.0404 cachedInputCost=$0.0011 cacheWriteCost=$0.0000 outputCost=$0.0245 estimatedRequestCost=$0.0660 cycleCost=$0.0939 sessionCost=$0.8558
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=2792 cacheWriteTokens=0 hitRatio=21.6%
+[COMPACTION] triggered=true beforeEstimatedTokens=22672 afterEstimatedTokens=22038 cycleCompactions=1
+[BUDGET] requestsRemaining=6 finalizationReserved=true toolMode=normal
+[CONTEXT] systemChars=15710 dynamicInputChars=40747 toolSchemaChars=9656 v2ToolSchemaChars=9654 v3ToolSchemaChars=2 toolResultCharsThisRound=7005 toolResultCharsAccumulated=7005 memoryChars=0 summaryChars=3645 deltaChars=1832 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=104582 operationsChars=13072 fullStateSent=false colonistsChars=15952 mapOverviewChars=2273 carriedContextChars=0 requestEstimateChars=66113 estimatedInputTokens=22038
+[COST] request=3 kind=response model=gpt-5.6 inputTokens=13158 cachedInputTokens=9118 cacheWriteTokens=4037 uncachedInputTokens=4040 outputTokens=86 uncachedInputCost=$0.0000 cachedInputCost=$0.0036 cacheWriteCost=$0.0202 outputCost=$0.0017 estimatedRequestCost=$0.0256 cycleCost=$0.1194 sessionCost=$0.8813
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=9118 cacheWriteTokens=4037 hitRatio=69.3%
+[MODEL] Tool-call round 2: 1 call(s)
+[ACTION] set_speed(speed=0)
+[ACTION] submitted set_speed commandId=b53d06c52c044b5387afdf0fb33c4835 in 0.00s
+[RESULT] b53d06c52c044b5387afdf0fb33c4835 completed in 0.35s success=true
+[TOOL RESULT] tool=set_speed rawChars=202 modelChars=26 compressionRatio=7.8x success=true
+[STATESTORE] colony=0cb2f1e8 snapshot=1335 persisted
+[STATE] Post-action authoritative version=1335 loaded=True paused=True speed=0 ticks=333259 colonists=3 prisoners=0 animals=1 threats=1 meals=6 nutrition=6.565 colonistNames=[Tim, Sarai, Dos]
+[STATE READ] cache invalidated after a write command
+[MODEL] Sending tool results and fresh state back to model
+[BUDGET] requestsRemaining=5 finalizationReserved=true toolMode=normal
+[TOOLS] requestMode=normal toolCount=13 schemaChars=9656
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=14098 activeToolSchemaChars=9656 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=14098 toolSchemaChars=9656 v2ToolSchemaChars=9654 v3ToolSchemaChars=2 toolResultCharsThisRound=26 toolResultCharsAccumulated=7031 memoryChars=0 summaryChars=3452 deltaChars=4379 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=104341 operationsChars=13067 fullStateSent=false colonistsChars=15950 mapOverviewChars=2272 carriedContextChars=42738 requestEstimateChars=82202 estimatedInputTokens=27401
+[COMPACTION] triggered=false reason=limitReached beforeEstimatedTokens=27401 cycleCompactions=1
+[COST] request=4 kind=response model=gpt-5.6 inputTokens=15463 cachedInputTokens=9118 cacheWriteTokens=6342 uncachedInputTokens=6345 outputTokens=140 uncachedInputCost=$0.0000 cachedInputCost=$0.0036 cacheWriteCost=$0.0317 outputCost=$0.0028 estimatedRequestCost=$0.0382 cycleCost=$0.1576 sessionCost=$0.9195
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=9118 cacheWriteTokens=6342 hitRatio=59.0%
+[MODEL] Tool-call round 3: 3 call(s)
+[ACTION] get_colony_state(section='threats')
+[RESULT] get_colony_state completed in 0.00s
+[TOOL RESULT] tool=get_colony_state rawChars=439 modelChars=390 compressionRatio=1.1x success=true
+[ACTION] get_colony_state(section='equipment')
+[RESULT] get_colony_state completed in 0.00s
+[TOOL RESULT] tool=get_colony_state rawChars=1776 modelChars=1652 compressionRatio=1.1x success=true
+[ACTION] inspect_map(min_x=107, min_z=154, max_x=127, max_z=174)
+[RESULT] inspect_map completed in 0.02s
+[TOOL RESULT] tool=inspect_map rawChars=42743 modelChars=4985 compressionRatio=8.6x success=true
+[STATESTORE] colony=0cb2f1e8 snapshot=1339 persisted
+[STATE] Current loaded=True paused=True speed=0 ticks=333259 colonists=3 prisoners=0 animals=1 threats=1 meals=6 nutrition=6.565 colonistNames=[Tim, Sarai, Dos]
+[HEADROOM] tool=inspect_map callId=call_9LSOJSfw1qpT0QmkP8UPSJG5 beforeChars=4985 afterChars=421 targetTokens=28000
+[HEADROOM] actionBurst=true estimatedInputTokens=31203 targetTokens=34000 hardLimitTokens=36000 finalizationReserved=true
+[MODEL] Sending tool results and fresh state back to model
+[BUDGET] requestsRemaining=4 finalizationReserved=true toolMode=context-action-only
+[TOOLS] requestMode=context-action-only toolCount=6 schemaChars=6229
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=12267 activeToolSchemaChars=6229 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=12267 toolSchemaChars=6229 v2ToolSchemaChars=6227 v3ToolSchemaChars=2 toolResultCharsThisRound=2463 toolResultCharsAccumulated=9494 memoryChars=0 summaryChars=3452 deltaChars=69 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=104341 operationsChars=13067 fullStateSent=false colonistsChars=15950 mapOverviewChars=2272 carriedContextChars=59403 requestEstimateChars=93609 estimatedInputTokens=31203
+[COMPACTION] triggered=false reason=limitReached beforeEstimatedTokens=31203 cycleCompactions=1
+[HEADROOM] actionRoundConsumed=true nextRequestFinalizationOnly=true
+[HEADROOM] actionBurstConsumed=true estimatedInputTokens=31203 hardLimitTokens=36000 nextRequestFinalizationOnly=true
+[COST] request=5 kind=response model=gpt-5.6 inputTokens=17988 cachedInputTokens=0 cacheWriteTokens=17985 uncachedInputTokens=17988 outputTokens=71 uncachedInputCost=$0.0000 cachedInputCost=$0.0000 cacheWriteCost=$0.0899 outputCost=$0.0014 estimatedRequestCost=$0.0914 cycleCost=$0.2490 sessionCost=$1.0109
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=0 cacheWriteTokens=17985 hitRatio=0.0%
+[MODEL] Tool-call round 4: 1 call(s)
+[ACTION] draft(pawn_id='Human141')
+[ACTION] submitted draft commandId=0ab9e4a4e287442d94ea457ce359e274 in 0.00s
+[RESULT] 0ab9e4a4e287442d94ea457ce359e274 completed in 0.33s success=true
+[TOOL RESULT] tool=draft rawChars=182 modelChars=51 compressionRatio=3.6x success=true
+[STATESTORE] colony=0cb2f1e8 snapshot=1343 persisted
+[STATE] Post-action authoritative version=1343 loaded=True paused=False speed=3 ticks=334381 colonists=3 prisoners=0 animals=1 threats=1 meals=6 nutrition=6.565 colonistNames=[Tim, Sarai, Dos]
+[STATE READ] cache invalidated after a write command
+[HEADROOM] finalizationOnly=true estimatedInputTokens=35085 targetTokens=28000 headroomReserveUnachievable=true
+[MODEL] Sending tool results and fresh state back to model
+[BUDGET] requestsRemaining=3 finalizationReserved=true toolMode=context-finalization-only
+[TOOLS] requestMode=context-finalization-only toolCount=1 schemaChars=3858
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=12124 activeToolSchemaChars=3858 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=12124 toolSchemaChars=3858 v2ToolSchemaChars=3856 v3ToolSchemaChars=2 toolResultCharsThisRound=51 toolResultCharsAccumulated=9545 memoryChars=0 summaryChars=3443 deltaChars=2535 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=103939 operationsChars=12623 fullStateSent=false colonistsChars=15949 mapOverviewChars=2273 carriedContextChars=73562 requestEstimateChars=105254 estimatedInputTokens=35085
+[COMPACTION] triggered=false reason=limitReached beforeEstimatedTokens=35085 cycleCompactions=1
+[CONTEXT LIMIT] system=15710 dynamic=12124 tools=3858 toolResults=9545 fullState=103939 operations=12623 fullStateSent=false estimatedInputTokens=35085 hardLimitTokens=30000 requestMode=context-finalization-only actionBurst=false
+[ERROR] Tool-call loop terminated: Model context exceeds configured input-token limit. estimatedInputTokens=35085 limit=30000
+[MODEL] Final assessment: no text returned
+[AUTONOMY] decision=5 trigger=new_threat priority=urgent attempt=2
+[STATE] Checking RimGPT bridge health
+[STATE] Bridge health: ok (RimGPT)
+[STATESTORE] colony=0cb2f1e8 snapshot=1345 persisted
+[STATE] loaded=True paused=False speed=3 ticks=335107 colonists=3 prisoners=0 animals=1 threats=1 meals=6 nutrition=6.565 colonistNames=[Tim, Sarai, Dos]
+[DELTA] from=883 to=1345 chars=4552 fullStateChars=103908 compressionRatio=22.8x
+[CONTEXT COMPARISON] fullStateChars=103908 memoryChars=273 summaryChars=3409 deltaChars=4552 progressChars=1666 stallChars=2 triggerChars=1759 decisionHandoffChars=5597 compactDynamicChars=20010 dynamicCompression=5.2x fullStateSent=false
+[TOOLS] capability=combat preloaded
+[TOOLS] activeGroups=core,combat toolCount=13 schemaChars=9656
+[MODEL] Requesting one decision cycle from gpt-5.6
+[BUDGET] requestsRemaining=6 finalizationReserved=true toolMode=normal
+[TOOLS] requestMode=normal toolCount=13 schemaChars=9656
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=22489 activeToolSchemaChars=9656 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=22489 toolSchemaChars=9656 v2ToolSchemaChars=9654 v3ToolSchemaChars=2 toolResultCharsThisRound=0 toolResultCharsAccumulated=0 memoryChars=273 summaryChars=3409 deltaChars=4552 triggerChars=1759 decisionHandoffChars=5597 bootstrap=false bootstrapChars=0 fullStateChars=103908 operationsChars=12626 fullStateSent=false colonistsChars=15949 mapOverviewChars=2273 carriedContextChars=0 requestEstimateChars=47855 estimatedInputTokens=15952
+[COST] request=1 kind=response model=gpt-5.6 inputTokens=9598 cachedInputTokens=4351 cacheWriteTokens=5244 uncachedInputTokens=5247 outputTokens=137 uncachedInputCost=$0.0000 cachedInputCost=$0.0017 cacheWriteCost=$0.0262 outputCost=$0.0027 estimatedRequestCost=$0.0307 cycleCost=$0.0307 sessionCost=$1.0416
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=4351 cacheWriteTokens=5244 hitRatio=45.3%
+[MODEL] Tool-call round 1: 4 call(s)
+[ACTION] get_colony_state(section='threats')
+[RESULT] get_colony_state completed in 0.01s
+[TOOL RESULT] tool=get_colony_state rawChars=439 modelChars=390 compressionRatio=1.1x success=true
+[ACTION] get_colony_state(section='equipment')
+[RESULT] get_colony_state completed in 0.01s
+[TOOL RESULT] tool=get_colony_state rawChars=1776 modelChars=1652 compressionRatio=1.1x success=true
+[ACTION] inspect_map(min_x=100, min_z=152, max_x=122, max_z=172)
+[RESULT] inspect_map completed in 0.03s
+[TOOL RESULT] tool=inspect_map rawChars=48772 modelChars=4091 compressionRatio=11.9x success=true
+[ACTION] get_colony_state(section='pawns')
+[RESULT] get_colony_state completed in 0.01s
+[TOOL RESULT] tool=get_colony_state rawChars=1959 modelChars=1829 compressionRatio=1.1x success=true
+[STATESTORE] colony=0cb2f1e8 snapshot=1349 persisted
+[STATE] Current loaded=True paused=False speed=3 ticks=336559 colonists=3 prisoners=0 animals=1 threats=1 meals=5 nutrition=5.665 colonistNames=[Tim, Sarai, Dos]
+[MODEL] Sending tool results and fresh state back to model
+[BUDGET] requestsRemaining=5 finalizationReserved=true toolMode=normal
+[TOOLS] requestMode=normal toolCount=13 schemaChars=9656
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=21461 activeToolSchemaChars=9656 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=21461 toolSchemaChars=9656 v2ToolSchemaChars=9654 v3ToolSchemaChars=2 toolResultCharsThisRound=7962 toolResultCharsAccumulated=7962 memoryChars=0 summaryChars=3367 deltaChars=2615 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=103495 operationsChars=12255 fullStateSent=false colonistsChars=15943 mapOverviewChars=2272 carriedContextChars=25182 requestEstimateChars=72009 estimatedInputTokens=24003
+[COST] request=2 kind=compaction model=gpt-5.6 inputTokens=13798 cachedInputTokens=2792 cacheWriteTokens=0 uncachedInputTokens=11006 outputTokens=1886 uncachedInputCost=$0.0440 cachedInputCost=$0.0011 cacheWriteCost=$0.0000 outputCost=$0.0377 estimatedRequestCost=$0.0829 cycleCost=$0.1136 sessionCost=$1.1244
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=2792 cacheWriteTokens=0 hitRatio=20.2%
+[COMPACTION] triggered=true beforeEstimatedTokens=24003 afterEstimatedTokens=24328 cycleCompactions=1
+[BUDGET] requestsRemaining=4 finalizationReserved=true toolMode=normal
+[CONTEXT] systemChars=15710 dynamicInputChars=47618 toolSchemaChars=9656 v2ToolSchemaChars=9654 v3ToolSchemaChars=2 toolResultCharsThisRound=7962 toolResultCharsAccumulated=7962 memoryChars=0 summaryChars=3367 deltaChars=2615 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=103495 operationsChars=12255 fullStateSent=false colonistsChars=15943 mapOverviewChars=2272 carriedContextChars=0 requestEstimateChars=72984 estimatedInputTokens=24328
+[COST] request=3 kind=response model=gpt-5.6 inputTokens=14443 cachedInputTokens=9595 cacheWriteTokens=4845 uncachedInputTokens=4848 outputTokens=157 uncachedInputCost=$0.0000 cachedInputCost=$0.0038 cacheWriteCost=$0.0242 outputCost=$0.0031 estimatedRequestCost=$0.0312 cycleCost=$0.1448 sessionCost=$1.1557
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=9595 cacheWriteTokens=4845 hitRatio=66.4%
+[MODEL] Tool-call round 2: 2 call(s)
+[ACTION] set_speed(speed=0)
+[ACTION] draft(pawn_id='Human144')
+[ACTION] submitted set_speed commandId=ea5aeb286e6042ef9ec135575afea804 in 0.00s
+[ACTION] submitted draft commandId=7f7c7b37db534507ae7e5699730eece7 in 0.00s
+[RESULT] ea5aeb286e6042ef9ec135575afea804 completed in 0.36s success=true
+[TOOL RESULT] tool=set_speed rawChars=202 modelChars=26 compressionRatio=7.8x success=true
+[RESULT] 7f7c7b37db534507ae7e5699730eece7 completed in 0.36s success=true
+[TOOL RESULT] tool=draft rawChars=182 modelChars=51 compressionRatio=3.6x success=true
+[STATESTORE] colony=0cb2f1e8 snapshot=1382 persisted
+[STATE] Post-action authoritative version=1382 loaded=True paused=True speed=0 ticks=339638 colonists=3 prisoners=0 animals=1 threats=1 meals=4 nutrition=4.765 colonistNames=[Tim, Sarai, Dos]
+[STATE READ] cache invalidated after a write command
+[HEADROOM] finalizationOnly=true estimatedInputTokens=28539 targetTokens=28000 headroomReserveUnachievable=true
+[MODEL] Sending tool results and fresh state back to model
+[BUDGET] requestsRemaining=3 finalizationReserved=true toolMode=context-finalization-only
+[TOOLS] requestMode=context-finalization-only toolCount=1 schemaChars=3858
+[PROMPT] version=context-memory-v1-m11.2.5 stablePrefixChars=15710 dynamicChars=15917 activeToolSchemaChars=3858 cacheKey=rimgpt:context-memory-v1-m11.2.5:gpt-5.6
+[CONTEXT] systemChars=15710 dynamicInputChars=15917 toolSchemaChars=3858 v2ToolSchemaChars=3856 v3ToolSchemaChars=2 toolResultCharsThisRound=77 toolResultCharsAccumulated=8039 memoryChars=0 summaryChars=3692 deltaChars=5615 triggerChars=0 decisionHandoffChars=0 bootstrap=false bootstrapChars=0 fullStateChars=104282 operationsChars=12110 fullStateSent=false colonistsChars=15947 mapOverviewChars=2273 carriedContextChars=50131 requestEstimateChars=85616 estimatedInputTokens=28539
+[COMPACTION] triggered=false reason=limitReached beforeEstimatedTokens=28539 cycleCompactions=1
+[COST] request=4 kind=response model=gpt-5.6 inputTokens=15721 cachedInputTokens=3329 cacheWriteTokens=12262 uncachedInputTokens=12392 outputTokens=1358 uncachedInputCost=$0.0005 cachedInputCost=$0.0013 cacheWriteCost=$0.0613 outputCost=$0.0272 estimatedRequestCost=$0.0903 cycleCost=$0.2351 sessionCost=$1.2460
+[CACHE] key=rimgpt:context-memory-v1-m11.2.5:gpt-5.6 cachedInputTokens=3329 cacheWriteTokens=12262 hitRatio=21.2%
+[MODEL] Tool-call round 3: 1 call(s)
+[ACTION] finish_decision(assessment='Paused at immediate contact: the lone melee raider reached (112,171), adjacent to fleeing Dos at (109,172); Sarai is drafted at (111,160), while Tim is unavailable in a tantrum at (147,144). No colonist is injured yet. Next cycle must resolve combat before unpausing. Food is critical at 4 meals (~1 day); shelter, rice, meal source, and research remain blocked.', open_loops=[{'id': 'L-83db98', 'objective': 'Prepare adequate cold-weather clothing before temperatures fall further', 'next_action': 'Monitor for a warm-clothes warning or hazardous cooling after immediate combat and food needs are controlled.', 'status': 'deferred', 'reason': 'Outdoor temperature is still mild at 17.7°C, with no cold injury or clothing warning.'}, {'id': 'L-1a87c4', 'objective': 'Establish a usable meal-preparation source before packaged meals run low', 'next_action': 'After combat, enable construction controls, identify a campfire or stove definition, validate placement, and place it immediately.', 'status': 'pending', 'reason': 'Only 4 meals (~1 day) remain, crops are immature, and no cooking facility exists.'}, {'id': 'L-1ad018', 'objective': 'Defeat the preparing Pollution Slickers raid without avoidable colonist injury', 'next_action': 'While paused, tactically protect Dos from the adjacent raider using drafted Sarai; account for Tim being unavailable in a tantrum before unpausing.', 'status': 'pending', 'reason': 'The assault began; the raider is at (112,171), Dos is fleeing from (109,172), Sarai is drafted at (111,160), and no one is injured yet.'}], resolved_loops=[], projects=[{'id': 'P-c39457', 'objective': 'Establish immediate sleeping shelter and basic storage', 'rationale': 'Outdoor sleeping spots and storage are usable, but an enclosed roofed room remains the primary shelter gap.', 'status': 'blocked', 'success_criteria': ['At least 3 colonist-usable sleeping places exist', 'At least 1 occupied enclosed, substantially roofed room is verified', 'Essential supplies have a practical designated storage area'], 'blockers': ['Exact wall and door build definitions are still needed; authoritative state confirms no enclosed roofed room exists.'], 'tasks': [{'id': 'T-72623e', 'key': 'inspect_shelter_site', 'objective': 'Inspect and validate a compact local shelter site', 'status': 'completed', 'mode': 'active', 'depends_on': [], 'blockers': []}, {'id': 'T-cead11', 'key': 'place_sleeping', 'objective': 'Place three valid sleeping spots immediately', 'status': 'completed', 'mode': 'active', 'depends_on': ['T-72623e'], 'blockers': []}, {'id': 'T-78ad09', 'key': 'build_shelter', 'objective': 'Place and complete a compact wood shelter with access', 'status': 'blocked', 'mode': 'active', 'depends_on': ['T-72623e'], 'blockers': ['Need exact wall and door build definitions.']}, {'id': 'T-244519', 'key': 'verify_room', 'objective': 'Verify enclosure, roofing, and room temperature at an interior cell', 'status': 'blocked', 'mode': 'active', 'depends_on': ['T-78ad09'], 'blockers': ['No player-built enclosed room exists to inspect.']}]}, {'id': 'P-c24807', 'objective': 'Create a renewable food pipeline and useful background work', 'rationale': 'Food is critical; 69 potato cells are planted, but the persisted rice-specific objective remains unmet.', 'status': 'blocked', 'success_criteria': ['A validated, reasonably sized rice growing zone exists', 'Rice planting is complete or authoritatively advancing', 'Food runway remains adequate while crops mature'], 'blockers': ['The two existing zones are fully planted potatoes, not rice; exact rice plant definition is still required.', 'Food runway is only ~1 day while all crops remain immature.'], 'tasks': [{'id': 'T-f2ff84', 'key': 'inspect_farm_site', 'objective': 'Inspect and validate a compact nearby farm site', 'status': 'completed', 'mode': 'active', 'depends_on': [], 'blockers': []}, {'id': 'T-2d530d', 'key': 'create_rice_zone', 'objective': 'Create a contiguous starter rice zone with a minimum useful cell count', 'status': 'blocked', 'mode': 'active', 'depends_on': ['T-f2ff84'], 'blockers': ['Confirm exact rice plant definition; existing zones are potato.']}, {'id': 'T-c5e085', 'key': 'monitor_planting', 'objective': 'Confirm rice planting advances while meal runway remains adequate', 'status': 'blocked', 'mode': 'background', 'depends_on': ['T-2d530d'], 'blockers': ['No rice zone exists, and current food runway is inadequate while 69 potato plants mature.']}]}, {'id': 'P-b3fa0e', 'objective': 'Start early infrastructure research', 'rationale': 'Batteries is selected; a sheltered basic research bench remains the prerequisite for useful research work.', 'status': 'blocked', 'success_criteria': ['Battery research is selected', 'A research bench exists and is operational in suitable shelter', 'Research progress is authoritatively advancing'], 'blockers': ['No usable research bench exists, Batteries remains at 0, and suitable enclosed shelter is absent.'], 'tasks': [{'id': 'T-d653d0', 'key': 'select_batteries', 'objective': 'Select Batteries as the current research project', 'status': 'completed', 'mode': 'background', 'depends_on': [], 'blockers': []}, {'id': 'T-977c2f', 'key': 'place_research_bench', 'objective': 'Validate and place a basic research bench after shelter layout is known', 'status': 'blocked', 'mode': 'background', 'depends_on': [], 'blockers': ['Requires completed shelter layout and exact research-bench build definition.']}, {'id': 'T-eaf333', 'key': 'confirm_research', 'objective': 'Confirm research progress is advancing', 'status': 'blocked', 'mode': 'background', 'depends_on': ['T-d653d0', 'T-977c2f'], 'blockers': ['Research remains at 0 because no usable bench exists.']}]}], resolved_projects=[])
+[HANDOFF] finish_decision accepted chars=5505 openLoops=3 projects=3 resolved=none
+[RESULT] finish_decision completed in 0.00s
+[TOOL RESULT] tool=finish_decision rawChars=5554 modelChars=5520 compressionRatio=1.0x success=true
+[MODEL] Tool-call loop terminated: finish_decision completed locally
+[MODEL] Final assessment: Paused at immediate contact: the lone melee raider reached (112,171), adjacent to fleeing Dos at (109,172); Sarai is drafted at (111,160), while Tim is unavailable in a tantrum at (147,144). No colonist is injured yet. Next cycle must resolve combat before unpausing. Food is critical at 4 meals (~1 day); shelter, rice, meal source, and research remain blocked.
+[STATESTORE] colony=0cb2f1e8 snapshot=1397 persisted
+[STATE] Final authoritative loaded=True paused=True speed=0 ticks=339638 colonists=3 prisoners=0 animals=1 threats=1 meals=4 nutrition=4.765 colonistNames=[Tim, Sarai, Dos]
+[HANDOFF] successful decision handoff and baseline persisted
+[AUTONOMY HALTED]
+reason=session_decision_limit
+trigger=new_threat
+attempts=2
+gamePaused=true
+modelRequests=23
+sessionCost=1.245983

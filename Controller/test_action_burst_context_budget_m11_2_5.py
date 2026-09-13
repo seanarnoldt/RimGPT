@@ -8,11 +8,14 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from agent_controller import AgentController, function_output
+<<<<<<< ours
 from autonomous_scheduler import (
     DEFAULT_MAX_AUTONOMOUS_DECISIONS,
     DEFAULT_MAX_SESSION_MODEL_REQUESTS,
     DEFAULT_MAX_SESSION_SPEND,
 )
+=======
+>>>>>>> theirs
 from context_telemetry import (
     DEFAULT_MAX_INPUT_TOKENS_PER_REQUEST,
     DEFAULT_MAX_MODEL_REQUESTS_PER_CYCLE,
@@ -185,10 +188,14 @@ class ActionBurstContextBudgetM1125Tests(unittest.TestCase):
 
         for index in range(4):
             self.assertEqual(fitted[index], outputs[index])
+<<<<<<< ours
         map_result = json.loads(fitted[4]["output"])
         self.assertNotIn("terrainRows", map_result)
         self.assertFalse(map_result["geometryIncluded"])
         self.assertFalse(map_result["partialGeometry"])
+=======
+        self.assertNotIn("terrainRows", json.loads(fitted[4]["output"]))
+>>>>>>> theirs
         self.assertTrue(json.loads(fitted[5]["output"])["resultReduced"])
         self.assertTrue(json.loads(fitted[6]["output"])["resultReduced"])
         reduction_lines = [line for line in log.getvalue().splitlines() if "tool=" in line]
@@ -289,6 +296,7 @@ class ActionBurstContextBudgetM1125Tests(unittest.TestCase):
         self.assertEqual(burst_error.exception.limit, DEFAULT_ACTION_BURST_HARD_LIMIT_TOKENS)
         self.assertEqual(self.fake.calls, [])
 
+<<<<<<< ours
         self.controller._action_burst_pending = False
         self.controller._context_action_only = False
         self.controller._context_finalization_only = True
@@ -298,6 +306,8 @@ class ActionBurstContextBudgetM1125Tests(unittest.TestCase):
         self.assertEqual(final_error.exception.limit, DEFAULT_MAX_INPUT_TOKENS_PER_REQUEST)
         self.assertEqual(self.fake.calls, [])
 
+=======
+>>>>>>> theirs
     def test_normal_sized_action_continuation_does_not_consume_burst(self):
         self.enable_large_action_surface()
         self.controller.compaction_count = 1
@@ -359,9 +369,12 @@ class ActionBurstContextBudgetM1125Tests(unittest.TestCase):
         self.assertEqual(DEFAULT_FINALIZATION_HEADROOM_TOKENS, 2_000)
         self.assertEqual(DEFAULT_ACTION_BURST_TARGET_TOKENS, 34_000)
         self.assertEqual(DEFAULT_ACTION_BURST_HARD_LIMIT_TOKENS, 36_000)
+<<<<<<< ours
         self.assertEqual(DEFAULT_MAX_AUTONOMOUS_DECISIONS, 20)
         self.assertEqual(DEFAULT_MAX_SESSION_MODEL_REQUESTS, 80)
         self.assertEqual(DEFAULT_MAX_SESSION_SPEND, 5.0)
+=======
+>>>>>>> theirs
         self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m11.2.5")
 
 
