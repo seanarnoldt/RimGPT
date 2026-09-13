@@ -20,6 +20,8 @@ from context_telemetry import (
     serialized_chars,
 )
 from continuation_headroom import (
+    DEFAULT_ACTION_BURST_HARD_LIMIT_TOKENS,
+    DEFAULT_ACTION_BURST_TARGET_TOKENS,
     DEFAULT_FINALIZATION_HEADROOM_TOKENS,
     fit_read_results,
     has_exact_action_critical_result,
@@ -159,6 +161,8 @@ When a read result reports contextHeadroomExceeded, no partial spatial geometry 
 
 When a read result reports controllerContextLimit or authoritativeGameplayBlocker=false, context management withheld that detail; it is not evidence of a gameplay blocker. Preserve the strategic intent and retry narrowly in a later decision only if still needed.
 
+When exact action evidence is followed by a write-capable action-only round, act or finish from that evidence immediately; no further discovery tools are available in that round.
+
 The controller automatically supplies a compact authoritative post-tool state update. Do not re-query a colony-state section only to confirm a successful command unless the next decision requires exact details from that section.
 
 Do not assume every visually open cell can support every structure.
@@ -246,6 +250,8 @@ class AgentController:
         self._last_presented_tool_names: set[str] | None = None
         self._context_finalization_only = False
         self._context_action_only = False
+        self._action_burst_pending = False
+        self._action_burst_consumed = False
         if not self.pricing.base_configured:
             print(
                 "[COST] calculation disabled: configure "
@@ -525,6 +531,19 @@ class AgentController:
                         "finalizationReserved=true"
                     )
                     return fitted
+                if (
+                    self._action_burst_eligible(fitted, tool_calls)
+                    and action_estimated <= DEFAULT_ACTION_BURST_HARD_LIMIT_TOKENS
+                ):
+                    self._action_burst_pending = True
+                    print(
+                        "[HEADROOM] "
+                        f"actionBurst=true estimatedInputTokens={action_estimated} "
+                        f"targetTokens={DEFAULT_ACTION_BURST_TARGET_TOKENS} "
+                        f"hardLimitTokens={DEFAULT_ACTION_BURST_HARD_LIMIT_TOKENS} "
+                        "finalizationReserved=true"
+                    )
+                    return fitted
                 self._context_action_only = False
 
             fitted, extra_reductions, estimated = fit_read_results(
@@ -565,6 +584,36 @@ class AgentController:
                 f"headroomReserveUnachievable={str(reserve_unachievable).lower()}"
             )
         return fitted
+
+    def _action_burst_eligible(
+        self,
+        outputs: list[dict[str, Any]],
+        tool_calls: list[Any],
+    ) -> bool:
+        if self._action_burst_pending or self._action_burst_consumed:
+            return False
+        if self.max_model_requests_per_cycle - self.model_request_count < 2:
+            return False
+        if self.compaction_count > getattr(
+            self,
+            "max_compactions_per_cycle",
+            DEFAULT_MAX_COMPACTIONS_PER_CYCLE,
+        ):
+            return False
+        if not has_exact_action_critical_result(outputs, tool_calls):
+            return False
+        schemas, mode = self._request_tool_surface()
+        if mode != "context-action-only":
+            return False
+        names = {str(schema.get("name") or "") for schema in schemas}
+        if "finish_decision" not in names:
+            return False
+        return any(
+            (registration := self.tool_registry.registration(name)) is not None
+            and not registration.read_only
+            for name in names
+            if name != "finish_decision"
+        )
 
     def _execute_tool_call_batch(self, tool_calls: list[Any]) -> list[dict[str, Any]]:
         self._ensure_safety_state()
@@ -817,6 +866,8 @@ class AgentController:
         self._last_presented_tool_names = None
         self._context_finalization_only = False
         self._context_action_only = False
+        self._action_burst_pending = False
+        self._action_burst_consumed = False
         self._get_active_tools().reset()
         self.dry_run_proposals = DryRunProposalLedger() if getattr(self, "dry_run", False) else None
 
@@ -1090,10 +1141,37 @@ class AgentController:
                     f"cycleCompactions={self.compaction_count}"
                 )
 
+        action_burst = (
+            tool_mode == "context-action-only"
+            and self._action_burst_pending
+            and not self._action_burst_consumed
+        )
+        normal_target = max(
+            1,
+            self.max_input_tokens_per_request - DEFAULT_FINALIZATION_HEADROOM_TOKENS,
+        )
+        if action_burst and breakdown.estimated_input_tokens <= normal_target:
+            self._action_burst_pending = False
+            action_burst = False
+            print(
+                "[HEADROOM] actionBurst=false reason=normalTargetSatisfiedAfterCompaction "
+                f"estimatedInputTokens={breakdown.estimated_input_tokens} targetTokens={normal_target}"
+            )
+
         # A continuation may carry previous large map results server-side. Give
         # the one permitted native compaction attempt a chance to replace that
-        # history before enforcing the unchanged hard guard.
-        self._enforce_context_limit(breakdown)
+        # history before enforcing the mode-specific hard guard.
+        hard_limit = (
+            DEFAULT_ACTION_BURST_HARD_LIMIT_TOKENS
+            if action_burst
+            else self.max_input_tokens_per_request
+        )
+        self._enforce_context_limit(
+            breakdown,
+            hard_limit=hard_limit,
+            request_mode=tool_mode,
+            action_burst=action_burst,
+        )
 
         request_number = self.model_request_count + 1
         request: dict[str, Any] = {
@@ -1107,6 +1185,9 @@ class AgentController:
             request["tool_choice"] = {"type": "function", "name": "finish_decision"}
         if previous_response_id:
             request["previous_response_id"] = previous_response_id
+        if action_burst:
+            self._action_burst_pending = False
+            self._action_burst_consumed = True
         self.model_request_count = request_number
         response = self.client.responses.create(**request)
         self._last_presented_tool_names = {str(schema.get("name")) for schema in active_tools}
@@ -1114,6 +1195,13 @@ class AgentController:
             self._context_action_only = False
             self._context_finalization_only = True
             print("[HEADROOM] actionRoundConsumed=true nextRequestFinalizationOnly=true")
+            if action_burst:
+                print(
+                    "[HEADROOM] "
+                    f"actionBurstConsumed=true estimatedInputTokens={breakdown.estimated_input_tokens} "
+                    f"hardLimitTokens={DEFAULT_ACTION_BURST_HARD_LIMIT_TOKENS} "
+                    "nextRequestFinalizationOnly=true"
+                )
         self.previous_response_id = getattr(response, "id", None)
         # A continuation references prior Responses output server-side. Track
         # the response payload we can observe so its growth remains visible to
@@ -1122,17 +1210,27 @@ class AgentController:
         self._log_response_usage(response, request_number, cache_key, "response")
         return response
 
-    def _enforce_context_limit(self, breakdown: ContextBreakdown) -> None:
-        if breakdown.estimated_input_tokens > self.max_input_tokens_per_request:
+    def _enforce_context_limit(
+        self,
+        breakdown: ContextBreakdown,
+        *,
+        hard_limit: int | None = None,
+        request_mode: str = "normal",
+        action_burst: bool = False,
+    ) -> None:
+        limit = self.max_input_tokens_per_request if hard_limit is None else hard_limit
+        if breakdown.estimated_input_tokens > limit:
             print(
                 "[CONTEXT LIMIT] "
                 f"system={breakdown.system_chars} dynamic={breakdown.dynamic_input_chars} "
                 f"tools={breakdown.tool_schema_chars} toolResults={breakdown.accumulated_tool_result_chars} "
                 f"fullState={breakdown.full_state_chars} operations={breakdown.operations_chars} "
                 f"fullStateSent={str(breakdown.full_state_sent).lower()} "
-                f"estimatedInputTokens={breakdown.estimated_input_tokens}"
+                f"estimatedInputTokens={breakdown.estimated_input_tokens} "
+                f"hardLimitTokens={limit} requestMode={request_mode} "
+                f"actionBurst={str(action_burst).lower()}"
             )
-            raise ModelContextLimitError(breakdown, self.max_input_tokens_per_request)
+            raise ModelContextLimitError(breakdown, limit)
 
     def _ensure_prompt_runtime_state(self) -> None:
         if not hasattr(self, "responses_features"):
@@ -1141,6 +1239,10 @@ class AgentController:
             self.compaction_count = 0
         if not hasattr(self, "previous_response_id"):
             self.previous_response_id = None
+        if not hasattr(self, "_action_burst_pending"):
+            self._action_burst_pending = False
+        if not hasattr(self, "_action_burst_consumed"):
+            self._action_burst_consumed = False
 
     def _measure_model_request(
         self,

@@ -132,7 +132,7 @@ class HandoffSafeFinalizationM1123Tests(unittest.TestCase):
             prepare_handoff(finish_arguments([submitted]), self.prior)
 
     def test_prompt_and_schema_require_exact_retained_criteria(self):
-        self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m11.2.4")
+        self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m11.2.5")
         self.assertIn("copy success_criteria exactly as persisted", SYSTEM_INSTRUCTIONS)
         finish = next(tool for tool in TOOLS if tool["name"] == "finish_decision")
         project_schema = finish["parameters"]["properties"]["projects"]

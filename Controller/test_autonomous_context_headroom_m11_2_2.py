@@ -180,6 +180,7 @@ class AutonomousContextHeadroomTests(unittest.TestCase):
             self.assertTrue(self.controller._get_active_tools().enable(group)["success"])
         self.controller.compaction_count = 1
         self.controller.model_request_count = 5
+        self.controller._action_burst_consumed = True
         # Represents prior catalog/read continuation history already carried by Responses.
         self.controller.carried_context_chars = 44_948
         calls, outputs, post_state, context = self.paid_shape()

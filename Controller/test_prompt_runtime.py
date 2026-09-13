@@ -132,7 +132,7 @@ class PromptRuntimeTests(unittest.TestCase):
         self.assertEqual(responses.create_calls[0]["previous_response_id"], "previous-1")
         self.assertEqual(
             responses.create_calls[0]["prompt_cache_key"],
-            "rimgpt:context-memory-v1-m11.2.4:gpt-5.6",
+            "rimgpt:context-memory-v1-m11.2.5:gpt-5.6",
         )
         self.assertEqual(
             responses.create_calls[0]["prompt_cache_options"],

@@ -201,6 +201,7 @@ class ActionHeadroomM1124Tests(unittest.TestCase):
     def test_unachievable_28k_reserve_is_explicit_but_hard_limit_remains_available(self):
         self.enable_action_surface()
         self.controller.carried_context_chars = 65_000
+        self.controller._action_burst_consumed = True
         calls, outputs, post_state, context = self.shelter_reads()
 
         log = io.StringIO()

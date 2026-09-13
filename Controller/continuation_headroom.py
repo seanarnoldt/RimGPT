@@ -9,6 +9,8 @@ from typing import Any, Callable
 
 
 DEFAULT_FINALIZATION_HEADROOM_TOKENS = 2_000
+DEFAULT_ACTION_BURST_TARGET_TOKENS = 34_000
+DEFAULT_ACTION_BURST_HARD_LIMIT_TOKENS = 36_000
 SMALL_ACTION_CRITICAL_RESULT_CHARS = 1_600
 
 _CATALOG_TOOLS = {
@@ -18,6 +20,7 @@ _CATALOG_TOOLS = {
     "list_recipes",
 }
 _REDUCIBLE_READ_TOOLS = _CATALOG_TOOLS | {"get_colony_state", "inspect_map"}
+_VALIDATION_TOOLS = {"check_build_placements", "check_zone_placement"}
 
 
 @dataclass(frozen=True)
@@ -154,17 +157,25 @@ def has_exact_action_critical_result(outputs: list[dict[str, Any]], tool_calls: 
     for output in outputs:
         tool, arguments = calls.get(str(output.get("call_id") or ""), ("", {}))
         payload = _payload(output)
-        if (
-            is_action_critical_read(tool, arguments)
-            and payload is not None
-            and payload.get("success") is True
-            and payload.get("resultReduced") is not True
-        ):
+        if payload is None or payload.get("success") is not True:
+            continue
+        if payload.get("resultReduced") is True or payload.get("truncated") is True:
+            continue
+        if payload.get("controllerLimited") is True:
+            continue
+        if tool in _VALIDATION_TOOLS and payload.get("valid") is True:
+            return True
+        if tool == "inspect_map" and _complete_action_map(payload, arguments):
+            return True
+        if is_action_critical_read(tool, arguments) and _stable_references(payload, 1):
             return True
     return False
 
 
 def is_action_critical_read(tool: str, arguments: dict[str, Any]) -> bool:
+    if tool == "inspect_map":
+        cell_count = _cell_count(_map_bounds({}, arguments))
+        return cell_count is not None and 0 < cell_count <= 100
     if tool == "get_build_info":
         return True
     if tool == "list_build_options":
@@ -174,6 +185,18 @@ def is_action_critical_read(tool: str, arguments: dict[str, Any]) -> bool:
     if tool == "get_colony_state":
         return str(arguments.get("section") or "").lower() in {"research", "equipment", "apparel"}
     return False
+
+
+def _complete_action_map(payload: dict[str, Any], arguments: dict[str, Any]) -> bool:
+    bounds = _map_bounds(payload, arguments)
+    cell_count = _cell_count(bounds)
+    return (
+        cell_count is not None
+        and 0 < cell_count <= 100
+        and isinstance(payload.get("terrainPalette"), list)
+        and isinstance(payload.get("terrainRows"), list)
+        and payload.get("geometryIncluded") is not False
+    )
 
 
 def _reduction_priority(tool: str, arguments: dict[str, Any]) -> int:

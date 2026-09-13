@@ -209,7 +209,7 @@ class RiskTriageM10FTests(unittest.TestCase):
             "currentSummary": {"threats": {"status": "none", "active": 0}},
             "operationalRisk": {"overallTriage": "monitor"},
         }), ())
-        self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m11.2.4")
+        self.assertEqual(RIMGPT_PROMPT_VERSION, "context-memory-v1-m11.2.5")
 
     def test_representative_context_remains_below_guard_without_full_state(self):
         with tempfile.TemporaryDirectory() as directory:
