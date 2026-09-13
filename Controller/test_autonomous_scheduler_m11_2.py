@@ -238,6 +238,33 @@ class AutonomousSchedulerM112Tests(unittest.TestCase):
         self.assertEqual(len(controller.calls), 2)
         self.assertEqual(len(bridge.pause_calls), 1)
 
+    def test_context_limit_failure_is_not_strategic_no_progress(self):
+        trigger = event("construction_blocked", fingerprint="blocked")
+        failed = DecisionOutcome(
+            success=False,
+            termination_reason="Model context exceeds configured input-token limit",
+            final_snapshot_version=2,
+            final_ticks_game=1001,
+            colony_lineage_id="lineage-a",
+            current_map_id="map-7",
+            handoff=None,
+            model_requests=1,
+            write_commands=0,
+            uncertain_commands_remained=False,
+            cycle_cost=0.1,
+            dry_run=False,
+        )
+        value, _, _, _ = scheduler(
+            [(trigger, state()), (no_trigger(1001), state(1001))], [failed]
+        )
+
+        result = value.step()
+
+        self.assertEqual(result.status, "decision_failed")
+        self.assertEqual(value._problem_attempts, {})
+        self.assertIsNone(value._verification)
+        self.assertEqual(value.consecutive_failures, 1)
+
     def test_strategic_doctrine_and_existing_request_guards_remain_explicit(self):
         for phrase in (
             "Survival comes first, but survival alone is not success",

@@ -19,6 +19,11 @@ from context_telemetry import (
     measure_context,
     serialized_chars,
 )
+from continuation_headroom import (
+    DEFAULT_FINALIZATION_HEADROOM_TOKENS,
+    fit_read_results,
+    minimize_for_finalization,
+)
 from decision_context import DecisionContextBuilder, build_current_summary, serialize_context
 from decision_handoff import DecisionHandoffError, fallback_handoff, handoff_chars, prepare_handoff
 from decision_outcome import DecisionOutcome
@@ -147,6 +152,8 @@ inspect_map uses a terrain palette with row runs encoded as [xStart,length,terra
 
 Successful batch and validator results summarize successes and list only failures. Missing per-cell success entries do not mean execution was omitted. If truncated=true, query a smaller region or narrower catalog when omitted detail matters.
 
+When a read result reports contextHeadroomExceeded, no partial spatial geometry was supplied. Re-query a materially smaller region only if it is essential; otherwise act from existing evidence or finish the decision. When resultReduced=true, use retained references and avoid repeating the same broad read during this decision.
+
 The controller automatically supplies a compact authoritative post-tool state update. Do not re-query a colony-state section only to confirm a successful command unless the next decision requires exact details from that section.
 
 Do not assume every visually open cell can support every structure.
@@ -232,6 +239,7 @@ class AgentController:
         self.pending_decision_handoff: dict[str, Any] | None = None
         self.terminal_decision_finished = False
         self._last_presented_tool_names: set[str] | None = None
+        self._context_finalization_only = False
         if not self.pricing.base_configured:
             print(
                 "[COST] calculation disabled: configure "
@@ -426,6 +434,12 @@ class AgentController:
                 include_context=True,
             )
 
+            outputs = self._fit_continuation_headroom(
+                outputs,
+                tool_calls,
+                post_action_state,
+                post_action_context,
+            )
             continuation_input = outputs + [post_action_state]
             self.tool_result_chars_this_round = model_result_chars(outputs)
             self.accumulated_tool_result_chars += self.tool_result_chars_this_round
@@ -446,6 +460,45 @@ class AgentController:
         self.termination_reason = f"max tool-call rounds reached ({self.max_tool_rounds})"
         print(f"[ERROR] Tool-call loop terminated: {self.termination_reason}")
         return current
+
+    def _fit_continuation_headroom(
+        self,
+        outputs: list[dict[str, Any]],
+        tool_calls: list[Any],
+        post_action_state: dict[str, Any],
+        post_action_context: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        target = max(1, self.max_input_tokens_per_request - DEFAULT_FINALIZATION_HEADROOM_TOKENS)
+
+        def estimate(candidate_outputs: list[dict[str, Any]]) -> int:
+            request_input = self._with_decision_budget(candidate_outputs + [post_action_state])
+            tools, _ = self._request_tool_surface()
+            return self._measure_model_request(
+                request_input,
+                tools,
+                self.current_state,
+                post_action_context,
+                carried_context_chars=self.carried_context_chars,
+            ).estimated_input_tokens
+
+        fitted, reductions, estimated = fit_read_results(outputs, tool_calls, estimate, target)
+        for reduction in reductions:
+            print(
+                "[HEADROOM] "
+                f"tool={reduction.tool} callId={reduction.call_id} "
+                f"beforeChars={reduction.before_chars} afterChars={reduction.after_chars} "
+                f"targetTokens={target}"
+            )
+
+        if estimated > target:
+            self._context_finalization_only = True
+            fitted = minimize_for_finalization(fitted, tool_calls)
+            estimated = estimate(fitted)
+            print(
+                "[HEADROOM] "
+                f"finalizationOnly=true estimatedInputTokens={estimated} targetTokens={target}"
+            )
+        return fitted
 
     def _execute_tool_call_batch(self, tool_calls: list[Any]) -> list[dict[str, Any]]:
         self._ensure_safety_state()
@@ -696,6 +749,7 @@ class AgentController:
         self.pending_decision_handoff = None
         self.terminal_decision_finished = False
         self._last_presented_tool_names = None
+        self._context_finalization_only = False
         self._get_active_tools().reset()
         self.dry_run_proposals = DryRunProposalLedger() if getattr(self, "dry_run", False) else None
 
@@ -767,6 +821,8 @@ class AgentController:
     def _request_tool_surface(self) -> tuple[list[dict[str, Any]], str]:
         remaining = self.max_model_requests_per_cycle - self.model_request_count
         schemas = self._get_active_tools().schemas()
+        if getattr(self, "_context_finalization_only", False):
+            return [schema for schema in schemas if schema.get("name") == "finish_decision"], "context-finalization-only"
         if remaining <= 1:
             return [schema for schema in schemas if schema.get("name") == "finish_decision"], "finalization-only"
         if remaining == 2:
@@ -971,7 +1027,7 @@ class AgentController:
             "input": request_input,
             **cache_fields,
         }
-        if tool_mode == "finalization-only":
+        if tool_mode in ("finalization-only", "context-finalization-only"):
             request["tool_choice"] = {"type": "function", "name": "finish_decision"}
         if previous_response_id:
             request["previous_response_id"] = previous_response_id
